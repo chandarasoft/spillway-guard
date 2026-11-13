@@ -3,15 +3,18 @@
  *
  * 사이트 Worker 의 fetch 맨 앞에서 호출합니다.
  *
- *   const blocked = await guardPage(request, env, { tenant: "acme", room: "sale", engineUrl: "...", protect: ["/reserve"] });
+ *   const blocked = await guardPage(request, env, { tenant: "acme", engineUrl: env.SPILLWAY_ENGINE_URL });
  *   if (blocked) return blocked;      // 대기 화면으로 보내거나, 쿠키를 심고 원래 URL 로 돌려보냄
  *   return handleNormally(request);   // null 이면 통과
+ *
+ * 어느 URL 에 어느 대기실을 걸지는 엔진의 대기실 설정(match/exclude)에서 받아 옵니다 (GET /q/{tenant}/rules, 10초 캐시).
+ * 코드에서 직접 정하고 싶으면 room + protect 옵션을 주면 됩니다 (v0.2 방식).
  *
  * 필요한 설정 (사이트 Worker):
  *   - SPILLWAY_TOKEN_SECRET   : 고객사 서명 키 (wrangler secret) — Spillway 에서 발급
  *   - SPILLWAY_ENGINE (선택)  : 엔진 Worker 의 Service Binding — 엔진과 같은 Cloudflare 계정일 때만
  *
- * 대기실이 켜져 있는지는 엔진의 /check API 로 확인합니다 (헬스체크 겸용, 10초 캐시).
+ * CSS·JS·이미지·폰트 같은 정적 파일은 규칙과 상관없이 엔진에 묻지 않고 바로 통과합니다.
  * 안전 원칙: 판단할 수 없으면 통과시킵니다(fail-open). 대기열 때문에 사이트가 막히면 안 됩니다.
  */
 export interface SpillwayEnv {
@@ -20,26 +23,39 @@ export interface SpillwayEnv {
 }
 export type PathRule = string | RegExp;
 export type GuardOptions = {
-    /** 고객사 id (엔진 tenants/{tenant}) */
+    /** 고객사 id */
     tenant: string;
-    /** 대기실 id (엔진 tenants/{tenant}/rooms/{room}.json) */
-    room: string;
     /** 엔진 공개 URL. 예: https://spillway-engine.<계정>.workers.dev */
     engineUrl: string;
-    /** 대기열을 적용할 경로. 문자열은 접두사("/reserve" → /reserve, /reserve/...), 정규식은 pathname 에 매칭 */
-    protect: PathRule[];
-    /** 제외할 경로 (protect 보다 우선) */
+    /**
+     * (선택) 코드로 규칙을 정할 때의 대기실 id. protect 와 함께 주면 엔진 규칙 대신 이것을 씁니다.
+     */
+    room?: string;
+    /** (선택, room 과 함께) 대기열을 걸 경로. 문자열은 접두사("/reserve" → /reserve, /reserve/...), 정규식은 pathname 에 매칭 */
+    protect?: PathRule[];
+    /** (선택, room 과 함께) 제외할 경로 (protect 보다 우선) */
     exclude?: PathRule[];
-    /** 통과시킬 User-Agent (기본: 주요 검색엔진/미리보기 봇) */
+    /** 통과시킬 User-Agent (기본: 주요 검색엔진/미리보기 봇). null 이면 봇도 줄 세움 */
     bypassUserAgents?: RegExp | null;
-    /** 대기실 상태(/check) 캐시 시간 ms (기본 10초) */
-    checkTtlMs?: number;
+    /** 정적 파일(CSS·JS·이미지·폰트 등)을 자동으로 통과 (기본 true) */
+    skipStatic?: boolean;
+    /** 엔진 규칙·상태 캐시 시간 ms (기본 10초) */
+    cacheTtlMs?: number;
 };
 export declare const TOKEN_PARAM = "__spw";
 export declare const cookieName: (tenant: string, room: string) => string;
 export declare function guardPage(request: Request, env: SpillwayEnv, opts: GuardOptions): Promise<Response | null>;
 /** 테스트용 */
-export declare function _resetStateCache(): void;
+export declare function _resetCache(): void;
+/**
+ * 경로 패턴 매칭. "*" 는 "/" 를 포함한 모든 문자에 매칭되고, 나머지는 그대로 비교합니다.
+ *   "/"        → "/" 만
+ *   "/l/*"     → "/l/1", "/l/1/x" (단 "/l" 은 아님)
+ *   "/event*"  → "/event", "/events", "/event/1"
+ */
+export declare function globMatch(pattern: string, pathname: string): boolean;
+/** 정적 파일 요청인지 (브라우저가 보낸 요청 종류 또는 확장자로 판단) */
+export declare function isStaticAsset(req: Request, url: URL): boolean;
 type AccessPayload = {
     t: "ac";
     tn: string;

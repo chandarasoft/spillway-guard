@@ -1,6 +1,6 @@
 /**
  * 기존 사이트 Worker 에 Spillway 를 붙이는 예시.
- * 사이트 프로젝트에서: npm i github:chandarasoft/spillway-guard#v0.2.0
+ * 사이트 프로젝트에서: npm i github:chandarasoft/spillway-guard#v0.3.0
  */
 import { guardPage, type SpillwayEnv } from "spillway-guard";
 
@@ -9,12 +9,11 @@ interface Env extends SpillwayEnv {
   // 사이트가 원래 쓰던 바인딩들 (DB, ASSETS 등)
 }
 
-const SPILLWAY = {
-  tenant: "chandarasoft", // 고객사 id
-  room: "test", // 대기실 id
-  protect: ["/reserve"], // 대기열을 걸 경로
-  exclude: ["/reserve/admin"], // 제외할 경로
-};
+// 어느 URL 에 대기열을 걸지는 엔진의 대기실 설정(tenants/{tenant}/rooms/*.json 의 match)에서 정합니다.
+const SPILLWAY = { tenant: "chandarasoft" };
+
+// 코드에서 직접 정하고 싶다면 (v0.2 방식):
+// const SPILLWAY = { tenant: "chandarasoft", room: "main", protect: ["/reserve"], exclude: ["/reserve/admin"] };
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
