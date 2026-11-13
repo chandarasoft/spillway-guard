@@ -4,13 +4,15 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
 
-  // 엔진과 "같은 id" 의 KV — 대기열 on/off 를 확인합니다.
-  "kv_namespaces": [{ "binding": "SPILLWAY_ROOMS", "id": "REPLACE_WITH_KV_NAMESPACE_ID" }],
+  "vars": {
+    // 엔진 공개 URL (로컬은 .dev.vars 의 SPILLWAY_ENGINE_URL=http://localhost:8787 이 덮어씀)
+    "SPILLWAY_ENGINE_URL": "https://spillway-engine.REPLACE-ACCOUNT.workers.dev"
+  },
 
-  // (선택) 엔진 헬스체크를 공개 인터넷 대신 내부로 — 같은 Cloudflare 계정일 때
+  // (선택) 엔진과 "같은 Cloudflare 계정"일 때만: /check 호출을 공개 인터넷 대신 내부로
   "services": [{ "binding": "SPILLWAY_ENGINE", "service": "spillway-engine" }]
 
-  // SPILLWAY_TOKEN_SECRET 은 secret 으로:
-  //   npx wrangler secret put SPILLWAY_TOKEN_SECRET   (엔진의 TOKEN_SECRET 과 같은 값)
-  // GitHub Actions 로 배포한다면 wrangler-action 의 secrets 입력에 SPILLWAY_TOKEN_SECRET 을 추가하세요.
+  // SPILLWAY_TOKEN_SECRET 은 secret 으로 (Spillway 에서 발급한 고객사 서명 키):
+  //   npx wrangler secret put SPILLWAY_TOKEN_SECRET
+  // GitHub Actions 로 배포한다면 배포 워크플로의 secrets 에 SPILLWAY_TOKEN_SECRET 을 추가하세요.
 }

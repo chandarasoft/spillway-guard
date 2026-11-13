@@ -3,20 +3,19 @@
  *
  * 사이트 Worker 의 fetch 맨 앞에서 호출합니다.
  *
- *   const blocked = await guardPage(request, env, { room: "test", engineUrl: "...", protect: ["/reserve"] });
+ *   const blocked = await guardPage(request, env, { tenant: "acme", room: "sale", engineUrl: "...", protect: ["/reserve"] });
  *   if (blocked) return blocked;      // 대기 화면으로 보내거나, 쿠키를 심고 원래 URL 로 돌려보냄
  *   return handleNormally(request);   // null 이면 통과
  *
- * 필요한 바인딩 (사이트 Worker 의 wrangler 설정):
- *   - SPILLWAY_ROOMS          : 엔진과 같은 KV namespace (대기실 on/off 확인용)
- *   - SPILLWAY_TOKEN_SECRET   : 엔진의 TOKEN_SECRET 과 같은 값 (wrangler secret)
- *   - SPILLWAY_ENGINE (선택)  : 엔진 Worker 의 Service Binding — 헬스체크를 내부망으로
+ * 필요한 설정 (사이트 Worker):
+ *   - SPILLWAY_TOKEN_SECRET   : 고객사 서명 키 (wrangler secret) — Spillway 에서 발급
+ *   - SPILLWAY_ENGINE (선택)  : 엔진 Worker 의 Service Binding — 엔진과 같은 Cloudflare 계정일 때만
  *
+ * 대기실이 켜져 있는지는 엔진의 /check API 로 확인합니다 (헬스체크 겸용, 10초 캐시).
  * 안전 원칙: 판단할 수 없으면 통과시킵니다(fail-open). 대기열 때문에 사이트가 막히면 안 됩니다.
  */
 
 export interface SpillwayEnv {
-  SPILLWAY_ROOMS: KVNamespace;
   SPILLWAY_TOKEN_SECRET: string;
   SPILLWAY_ENGINE?: Fetcher;
 }
@@ -24,7 +23,9 @@ export interface SpillwayEnv {
 export type PathRule = string | RegExp;
 
 export type GuardOptions = {
-  /** 대기실 id (엔진 rooms/{id}.json) */
+  /** 고객사 id (엔진 tenants/{tenant}) */
+  tenant: string;
+  /** 대기실 id (엔진 tenants/{tenant}/rooms/{room}.json) */
   room: string;
   /** 엔진 공개 URL. 예: https://spillway-engine.<계정>.workers.dev */
   engineUrl: string;
@@ -34,16 +35,16 @@ export type GuardOptions = {
   exclude?: PathRule[];
   /** 통과시킬 User-Agent (기본: 주요 검색엔진/미리보기 봇) */
   bypassUserAgents?: RegExp | null;
-  /** 엔진 헬스체크 여부 (기본 true). 엔진이 응답하지 않으면 통과 */
-  healthCheck?: boolean;
+  /** 대기실 상태(/check) 캐시 시간 ms (기본 10초) */
+  checkTtlMs?: number;
 };
 
 export const TOKEN_PARAM = "__spw";
 const DEFAULT_BOTS = /googlebot|bingbot|yeti|daum|duckduckbot|baiduspider|slurp|kakaotalk-scrap|facebookexternalhit|twitterbot|slackbot|linkedinbot/i;
-const HEALTH_TTL_MS = 10_000;
-const HEALTH_TIMEOUT_MS = 1_500;
+const CHECK_TTL_MS = 10_000;
+const CHECK_TIMEOUT_MS = 1_500;
 
-export const cookieName = (room: string) => `__spw_${room}`;
+export const cookieName = (tenant: string, room: string) => `__spw_${tenant}_${room}`;
 
 export async function guardPage(request: Request, env: SpillwayEnv, opts: GuardOptions): Promise<Response | null> {
   try {
@@ -70,14 +71,14 @@ async function guard(request: Request, env: SpillwayEnv, opts: GuardOptions): Pr
   const fromQueue = url.searchParams.get(TOKEN_PARAM);
   if (fromQueue !== null) {
     url.searchParams.delete(TOKEN_PARAM);
-    const p = await verifyAccess(fromQueue, secret, opts.room);
+    const p = await verifyAccess(fromQueue, secret, opts.tenant, opts.room);
     if (p) {
       const maxAge = Math.max(1, p.exp - nowSec());
       return new Response(null, {
         status: 302,
         headers: {
           location: url.toString(),
-          "set-cookie": `${cookieName(opts.room)}=${fromQueue}; Path=/; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax`,
+          "set-cookie": `${cookieName(opts.tenant, opts.room)}=${fromQueue}; Path=/; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax`,
           "cache-control": "no-store",
         },
       });
@@ -86,18 +87,14 @@ async function guard(request: Request, env: SpillwayEnv, opts: GuardOptions): Pr
   }
 
   // 2) 이미 입장한 사용자
-  const fromCookie = readCookie(request.headers.get("cookie"), cookieName(opts.room));
-  if (fromCookie && (await verifyAccess(fromCookie, secret, opts.room))) return null;
+  const fromCookie = readCookie(request.headers.get("cookie"), cookieName(opts.tenant, opts.room));
+  if (fromCookie && (await verifyAccess(fromCookie, secret, opts.tenant, opts.room))) return null;
 
-  // 3) 대기열이 켜져 있는지 (KV). 읽지 못하면 통과
-  const cfg = await env.SPILLWAY_ROOMS.get<{ enabled?: boolean }>(`room:${opts.room}`, { type: "json", cacheTtl: 30 });
-  if (!cfg || cfg.enabled === false) return null;
+  // 3) 대기실이 켜져 있고 엔진이 응답하는지 (/check). 꺼짐·없음·응답 없음이면 통과
+  if ((await roomState(env, opts)) !== "enabled") return null;
 
-  // 4) 엔진이 살아 있는지. 죽어 있으면 통과
-  if (opts.healthCheck !== false && !(await engineHealthy(env, opts.engineUrl))) return null;
-
-  // 5) 대기 화면으로
-  const wait = new URL(`/q/${encodeURIComponent(opts.room)}/wait`, opts.engineUrl);
+  // 4) 대기 화면으로
+  const wait = new URL(`/q/${encodeURIComponent(opts.tenant)}/${encodeURIComponent(opts.room)}/wait`, opts.engineUrl);
   wait.searchParams.set("return", url.toString());
 
   if (!isNavigation(request)) {
@@ -133,27 +130,37 @@ function readCookie(header: string | null, name: string): string | null {
   return null;
 }
 
-let health: { ok: boolean; at: number } | null = null;
+type RoomState = "enabled" | "disabled" | "unavailable";
+const states = new Map<string, { state: RoomState; at: number }>();
 
 /** 테스트용 */
-export function _resetHealthCache() {
-  health = null;
+export function _resetStateCache() {
+  states.clear();
 }
 
-async function engineHealthy(env: SpillwayEnv, engineUrl: string): Promise<boolean> {
+/** 엔진 /check 로 대기실 상태를 확인합니다. Worker 인스턴스마다 checkTtlMs 동안 캐시. */
+async function roomState(env: SpillwayEnv, opts: GuardOptions): Promise<RoomState> {
+  const key = `${opts.engineUrl}|${opts.tenant}/${opts.room}`;
   const now = Date.now();
-  if (health && now - health.at < HEALTH_TTL_MS) return health.ok;
-  let ok = false;
+  const hit = states.get(key);
+  if (hit && now - hit.at < (opts.checkTtlMs ?? CHECK_TTL_MS)) return hit.state;
+
+  let state: RoomState = "unavailable";
   try {
-    const target = new URL("/health", engineUrl).toString();
-    const signal = AbortSignal.timeout(HEALTH_TIMEOUT_MS);
+    const target = new URL(`/q/${encodeURIComponent(opts.tenant)}/${encodeURIComponent(opts.room)}/check`, opts.engineUrl).toString();
+    const signal = AbortSignal.timeout(CHECK_TIMEOUT_MS);
     const res = env.SPILLWAY_ENGINE ? await env.SPILLWAY_ENGINE.fetch(target, { signal }) : await fetch(target, { signal });
-    ok = res.ok;
+    if (res.ok) {
+      const body = (await res.json()) as { enabled?: boolean };
+      state = body.enabled === true ? "enabled" : "disabled";
+    } else {
+      if (res.status === 404) console.warn(`spillway: 대기실 ${opts.tenant}/${opts.room} 을(를) 엔진에서 찾을 수 없습니다 (통과 처리)`);
+    }
   } catch {
-    ok = false;
+    state = "unavailable";
   }
-  health = { ok, at: now };
-  return ok;
+  states.set(key, { state, at: now });
+  return state;
 }
 
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -162,7 +169,7 @@ const nowSec = () => Math.floor(Date.now() / 1000);
 // 형식: base64url(JSON) "." base64url(HMAC-SHA256(secret, 앞부분))
 // 형식을 바꾸면 엔진도 함께 바꾸고, 두 프로젝트의 SHARED_VECTOR 테스트를 갱신하세요.
 
-type AccessPayload = { t: "ac"; r: string; n: number; exp: number };
+type AccessPayload = { t: "ac"; tn: string; r: string; n: number; exp: number; kid: number };
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -197,7 +204,7 @@ export async function signToken(payload: object, secret: string): Promise<string
   return `${body}.${b64urlEncode(new Uint8Array(sig))}`;
 }
 
-export async function verifyAccess(token: string, secret: string, room: string): Promise<AccessPayload | null> {
+export async function verifyAccess(token: string, secret: string, tenant: string, room: string): Promise<AccessPayload | null> {
   if (!token || token.length > 2048) return null;
   const dot = token.indexOf(".");
   if (dot <= 0 || dot !== token.lastIndexOf(".")) return null;
@@ -206,7 +213,7 @@ export async function verifyAccess(token: string, secret: string, room: string):
     const ok = await crypto.subtle.verify("HMAC", await hmacKey(secret), b64urlDecode(token.slice(dot + 1)), enc.encode(body));
     if (!ok) return null;
     const p = JSON.parse(dec.decode(b64urlDecode(body))) as AccessPayload;
-    if (p.t !== "ac" || p.r !== room || typeof p.exp !== "number" || p.exp < nowSec()) return null;
+    if (p.t !== "ac" || p.tn !== tenant || p.r !== room || typeof p.exp !== "number" || p.exp < nowSec()) return null;
     return p;
   } catch {
     return null;
