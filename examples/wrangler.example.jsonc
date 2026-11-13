@@ -1,0 +1,16 @@
+// 사이트 Worker 의 wrangler 설정에 추가할 부분 (기존 설정에 합치세요)
+{
+  "name": "my-site",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+
+  // 엔진과 "같은 id" 의 KV — 대기열 on/off 를 확인합니다.
+  "kv_namespaces": [{ "binding": "SPILLWAY_ROOMS", "id": "REPLACE_WITH_KV_NAMESPACE_ID" }],
+
+  // (선택) 엔진 헬스체크를 공개 인터넷 대신 내부로 — 같은 Cloudflare 계정일 때
+  "services": [{ "binding": "SPILLWAY_ENGINE", "service": "spillway-engine" }]
+
+  // SPILLWAY_TOKEN_SECRET 은 secret 으로:
+  //   npx wrangler secret put SPILLWAY_TOKEN_SECRET   (엔진의 TOKEN_SECRET 과 같은 값)
+  // GitHub Actions 로 배포한다면 wrangler-action 의 secrets 입력에 SPILLWAY_TOKEN_SECRET 을 추가하세요.
+}

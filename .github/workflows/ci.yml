@@ -1,0 +1,40 @@
+name: CI spillway-guard
+
+# 가드는 사이트 Worker 에 포함되어 배포되므로, 여기서는 테스트와 빌드 검사만 합니다.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: dist/ 가 소스와 일치하는지 (npm run build 후 커밋했는지)
+        run: |
+          npm run build
+          git diff --exit-code -- dist || (echo "::error::dist/ 가 최신이 아닙니다. 'npm run build' 후 dist/ 를 커밋하세요." && exit 1)
+      - name: 패키지 내용 확인
+        run: npm pack --dry-run
+
+  release:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: GitHub Release 생성
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes --title "$GITHUB_REF_NAME"
