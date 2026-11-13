@@ -44,6 +44,12 @@ export type GuardOptions = {
   skipStatic?: boolean;
   /** 엔진 규칙·상태 캐시 시간 ms (기본 10초) */
   cacheTtlMs?: number;
+  /**
+   * (선택) 방문자가 보는 사이트 주소. 예: https://www.example.com
+   * CloudFront·다른 CDN·프록시가 앞에 있어서 Worker 가 받는 주소(*.workers.dev)와 방문자 주소가 다를 때 지정합니다.
+   * 대기 후 돌아갈 주소(return)를 이 origin 으로 만듭니다. 없으면 요청 주소를 그대로 씁니다.
+   */
+  siteOrigin?: string;
 };
 
 export const TOKEN_PARAM = "__spw";
@@ -59,6 +65,17 @@ const STATIC_EXT = new Set([
   "mp4", "webm", "mp3", "ogg", "wav", "m4a",
   "pdf", "txt", "xml", "webmanifest",
 ]);
+
+/** 방문자가 보는 주소: siteOrigin 이 있으면 그 origin + 요청 경로 */
+export function publicUrl(url: URL, siteOrigin?: string): string {
+  if (!siteOrigin) return url.toString();
+  try {
+    const o = new URL(siteOrigin);
+    return new URL(url.pathname + url.search, o.origin).toString();
+  } catch {
+    return url.toString();
+  }
+}
 
 export const cookieName = (tenant: string, room: string) => `__spw_${tenant}_${room}`;
 
@@ -98,7 +115,7 @@ async function guard(request: Request, env: SpillwayEnv, opts: GuardOptions): Pr
       return new Response(null, {
         status: 302,
         headers: {
-          location: url.toString(),
+          location: url.pathname + url.search, // 상대 주소 — 프록시 뒤에서도 방문자 주소 그대로
           "set-cookie": `${cookieName(opts.tenant, room)}=${fromQueue}; Path=/; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax`,
           "cache-control": "no-store",
         },
@@ -114,9 +131,9 @@ async function guard(request: Request, env: SpillwayEnv, opts: GuardOptions): Pr
   // 4) 대기실이 꺼져 있으면 통과
   if (!hit.enabled) return null;
 
-  // 5) 대기 화면으로
+  // 5) 대기 화면으로 (돌아올 주소는 방문자가 보는 주소로)
   const wait = new URL(`/q/${encodeURIComponent(opts.tenant)}/${encodeURIComponent(room)}/wait`, opts.engineUrl);
-  wait.searchParams.set("return", url.toString());
+  wait.searchParams.set("return", publicUrl(url, opts.siteOrigin));
 
   if (!isNavigation(request)) {
     // fetch/XHR 요청에는 리다이렉트 대신 429 + 대기 URL

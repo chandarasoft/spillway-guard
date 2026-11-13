@@ -41,8 +41,16 @@ export type GuardOptions = {
     skipStatic?: boolean;
     /** 엔진 규칙·상태 캐시 시간 ms (기본 10초) */
     cacheTtlMs?: number;
+    /**
+     * (선택) 방문자가 보는 사이트 주소. 예: https://www.example.com
+     * CloudFront·다른 CDN·프록시가 앞에 있어서 Worker 가 받는 주소(*.workers.dev)와 방문자 주소가 다를 때 지정합니다.
+     * 대기 후 돌아갈 주소(return)를 이 origin 으로 만듭니다. 없으면 요청 주소를 그대로 씁니다.
+     */
+    siteOrigin?: string;
 };
 export declare const TOKEN_PARAM = "__spw";
+/** 방문자가 보는 주소: siteOrigin 이 있으면 그 origin + 요청 경로 */
+export declare function publicUrl(url: URL, siteOrigin?: string): string;
 export declare const cookieName: (tenant: string, room: string) => string;
 export declare function guardPage(request: Request, env: SpillwayEnv, opts: GuardOptions): Promise<Response | null>;
 /** 테스트용 */

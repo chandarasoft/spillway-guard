@@ -29,6 +29,18 @@ const STATIC_EXT = new Set([
     "mp4", "webm", "mp3", "ogg", "wav", "m4a",
     "pdf", "txt", "xml", "webmanifest",
 ]);
+/** 방문자가 보는 주소: siteOrigin 이 있으면 그 origin + 요청 경로 */
+export function publicUrl(url, siteOrigin) {
+    if (!siteOrigin)
+        return url.toString();
+    try {
+        const o = new URL(siteOrigin);
+        return new URL(url.pathname + url.search, o.origin).toString();
+    }
+    catch {
+        return url.toString();
+    }
+}
 export const cookieName = (tenant, room) => `__spw_${tenant}_${room}`;
 export async function guardPage(request, env, opts) {
     try {
@@ -66,7 +78,7 @@ async function guard(request, env, opts) {
             return new Response(null, {
                 status: 302,
                 headers: {
-                    location: url.toString(),
+                    location: url.pathname + url.search, // 상대 주소 — 프록시 뒤에서도 방문자 주소 그대로
                     "set-cookie": `${cookieName(opts.tenant, room)}=${fromQueue}; Path=/; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax`,
                     "cache-control": "no-store",
                 },
@@ -81,9 +93,9 @@ async function guard(request, env, opts) {
     // 4) 대기실이 꺼져 있으면 통과
     if (!hit.enabled)
         return null;
-    // 5) 대기 화면으로
+    // 5) 대기 화면으로 (돌아올 주소는 방문자가 보는 주소로)
     const wait = new URL(`/q/${encodeURIComponent(opts.tenant)}/${encodeURIComponent(room)}/wait`, opts.engineUrl);
-    wait.searchParams.set("return", url.toString());
+    wait.searchParams.set("return", publicUrl(url, opts.siteOrigin));
     if (!isNavigation(request)) {
         // fetch/XHR 요청에는 리다이렉트 대신 429 + 대기 URL
         return new Response(JSON.stringify({ spillway: "queued", waitUrl: wait.toString() }), {

@@ -100,6 +100,13 @@ describe("엔진 규칙 (기본)", () => {
     expect(res?.status).toBe(429);
   });
 
+  it("siteOrigin 이 있으면 돌아갈 주소를 방문자 주소로 만든다 (CloudFront 등 프록시 뒤)", async () => {
+    const res = await guardPage(nav("https://site.acme.workers.dev/l/9?a=1"), makeEnv(), { ...opts, siteOrigin: "https://www.acme.com" });
+    expect(new URL(res!.headers.get("location")!).searchParams.get("return")).toBe("https://www.acme.com/l/9?a=1");
+    const bad = await guardPage(nav("https://site.com/"), makeEnv(), { ...opts, siteOrigin: "not a url" });
+    expect(new URL(bad!.headers.get("location")!).searchParams.get("return")).toBe("https://site.com/");
+  });
+
   it("fetch 요청에는 429 를 준다", async () => {
     const req = new Request("https://site.com/sale/data", { headers: { "sec-fetch-mode": "cors", "sec-fetch-dest": "empty" } });
     expect((await guardPage(req, makeEnv(), opts))?.status).toBe(429);
@@ -109,7 +116,7 @@ describe("엔진 규칙 (기본)", () => {
     const tok = await access();
     const res = await guardPage(nav(`https://site.com/?x=1&__spw=${tok}`), makeEnv(), opts);
     expect(res?.status).toBe(302);
-    expect(res!.headers.get("location")).toBe("https://site.com/?x=1");
+    expect(res!.headers.get("location")).toBe("/?x=1"); // 상대 주소 (프록시 뒤에서도 방문자 주소 유지)
     expect(res!.headers.get("set-cookie")).toContain(`${COOKIE}=${tok}`);
   });
 

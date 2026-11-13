@@ -21,7 +21,7 @@ GET 요청 ─┬─ 정적 파일(CSS·JS·이미지·폰트…) / 검색엔진
 
 **1. 설치** (태그로 버전 고정)
 ```bash
-npm i github:chandarasoft/spillway-guard#v0.3.0
+npm i github:chandarasoft/spillway-guard#v0.4.0
 ```
 
 **2. 고객사 서명 키 받기**: Spillway 운영자가 엔진에서 조회해 전달합니다.
@@ -98,8 +98,21 @@ app.use("*", async (c, next) => (await guardPage(c.req.raw, c.env, { tenant: "ch
 | `bypassUserAgents` | 주요 검색엔진·미리보기 봇 | `null` 이면 봇도 줄 세움 |
 | `skipStatic` | `true` | 정적 파일 자동 통과 |
 | `cacheTtlMs` | `10000` | 엔진 규칙·상태 캐시 시간 |
+| `siteOrigin` | — | 방문자가 보는 사이트 주소 (예: `https://www.example.com`). CloudFront 등 프록시 뒤에 있어 Worker 가 받는 주소가 `*.workers.dev` 일 때 지정 → 대기 후 돌아갈 주소를 이 origin 으로 만듦 |
+
+## CDN·프록시 뒤에서 쓸 때 (CloudFront 등)
+
+방문자 → CloudFront → `*.workers.dev` 처럼 앞단 프록시가 있으면 Worker 는 workers.dev 주소로 요청을 받습니다.
+- `siteOrigin` 에 방문자 주소를 넣어 주세요. 안 넣으면 대기 후 workers.dev 주소로 돌아갑니다.
+- 엔진 고객사 설정의 **허용 사이트**에 그 주소를 넣어야 합니다.
+- 프록시가 **쿼리 문자열(`__spw`)과 쿠키(`__spw_*`)를 Worker 로 전달**해야 하고, 대기열이 걸린 페이지(HTML)를 **캐시하지 않아야** 합니다. 캐시된 HTML 이 나가면 가드를 거치지 않습니다.
 
 ## 버전별 변경점
+
+**v0.4.0**
+- `siteOrigin` 옵션 추가 (CDN·프록시 뒤 사이트)
+- 토큰을 쿠키로 바꾼 뒤의 리다이렉트를 상대 주소로 (프록시 뒤에서도 방문자 주소 유지)
+
 
 **v0.3.0**
 - URL 규칙을 엔진 대기실 설정(`match`/`exclude`)에서 받아 옴 → 사이트 코드에는 `tenant` 와 `engineUrl` 만
@@ -124,7 +137,7 @@ GitHub 설치는 저장소의 `dist/` 를 그대로 쓰므로, **소스를 고�
 
 릴리스:
 ```bash
-git tag -a v0.3.0 -m "v0.3.0"   # package.json 의 version 과 맞추기 (-a: 주석 태그)
+git tag -a v0.4.0 -m "v0.4.0"   # package.json 의 version 과 맞추기 (-a: 주석 태그)
 git push --follow-tags          # 커밋과 주석 태그를 함께 푸시 → CI 통과 후 GitHub Release 자동 생성
 ```
-`git tag v0.3.0` 처럼 `-a` 없이 만든 태그는 `--follow-tags` 로 올라가지 않습니다. 그럴 때는 `git push origin v0.3.0` 으로 태그를 직접 푸시하세요.
+`git tag v0.4.0` 처럼 `-a` 없이 만든 태그는 `--follow-tags` 로 올라가지 않습니다. 그럴 때는 `git push origin v0.4.0` 으로 태그를 직접 푸시하세요.
