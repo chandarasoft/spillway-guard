@@ -3,7 +3,7 @@ name: CI spillway-guard
 # 가드는 사이트 Worker 에 포함되어 배포되므로, 여기서는 테스트와 빌드 검사만 합니다.
 on:
   push:
-    branches: [main]
+    branches: [main, master]
     tags: ["v*"]
   pull_request:
 

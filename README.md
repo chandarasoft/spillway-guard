@@ -93,8 +93,9 @@ GitHub 설치는 저장소의 `dist/` 를 그대로 쓰므로, **소스를 고�
 
 릴리스:
 ```bash
-git tag v0.2.0         # package.json 의 version 과 맞추기
-git push --follow-tags # CI 통과 후 GitHub Release 자동 생성
+git tag -a v0.2.0 -m "v0.2.0"   # package.json 의 version 과 맞추기 (-a: 주석 태그)
+git push --follow-tags          # 커밋과 주석 태그를 함께 푸시 → CI 통과 후 GitHub Release 자동 생성
 ```
+`git tag v0.2.0` 처럼 `-a` 없이 만든 태그는 `--follow-tags` 로 올라가지 않습니다. 그럴 때는 `git push origin v0.2.0` 으로 태그를 직접 푸시하세요.
 
 나중에 npm 레지스트리로 옮길 때는 `name` 을 `@spillway/guard` 같은 scope 이름으로 바꾸고 `npm publish --access public` 하면 됩니다.
