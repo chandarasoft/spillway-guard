@@ -14,6 +14,10 @@
  *   - SPILLWAY_TOKEN_SECRET   : 고객사 서명 키 (wrangler secret) — Spillway 에서 발급
  *   - SPILLWAY_ENGINE (선택)  : 엔진 Worker 의 Service Binding — 엔진과 같은 Cloudflare 계정일 때만
  *
+ * 버튼·이벤트 방식(대기실 mode "action")은 페이지가 아니라 API 를 보호합니다.
+ *   대기실 규칙에 "POST /api/reserve" 처럼 적힌 요청에 입장권이 없으면 429 {"spillway":"queued"} 를 돌려줍니다.
+ *   입장권은 사이트 화면의 sdk.js 가 대기 창에서 받아 x-spillway-token 헤더와 쿠키(__spw_{tenant}_{room})로 붙입니다.
+ *
  * CSS·JS·이미지·폰트 같은 정적 파일은 규칙과 상관없이 엔진에 묻지 않고 바로 통과합니다.
  * 안전 원칙: 판단할 수 없으면 통과시킵니다(fail-open). 대기열 때문에 사이트가 막히면 안 됩니다.
  */
@@ -49,10 +53,17 @@ export type GuardOptions = {
     siteOrigin?: string;
 };
 export declare const TOKEN_PARAM = "__spw";
+/** 버튼 방식 API 요청에 입장권을 싣는 헤더 (sdk.js 의 Spillway.fetch 가 붙임) */
+export declare const ACTION_HEADER = "x-spillway-token";
 /** 방문자가 보는 주소: siteOrigin 이 있으면 그 origin + 요청 경로 */
 export declare function publicUrl(url: URL, siteOrigin?: string): string;
 export declare const cookieName: (tenant: string, room: string) => string;
 export declare function guardPage(request: Request, env: SpillwayEnv, opts: GuardOptions): Promise<Response | null>;
+/**
+ * 버튼 방식 규칙 매칭: "POST /api/reserve" (메서드 + 경로) 또는 "/api/reserve" (모든 메서드).
+ * 경로 부분은 globMatch 와 같은 규칙입니다.
+ */
+export declare function actionMatch(pattern: string, method: string, pathname: string): boolean;
 /** 테스트용 */
 export declare function _resetCache(): void;
 /**

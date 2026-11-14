@@ -14,6 +14,10 @@
  *   - SPILLWAY_TOKEN_SECRET   : 고객사 서명 키 (wrangler secret) — Spillway 에서 발급
  *   - SPILLWAY_ENGINE (선택)  : 엔진 Worker 의 Service Binding — 엔진과 같은 Cloudflare 계정일 때만
  *
+ * 버튼·이벤트 방식(대기실 mode "action")은 페이지가 아니라 API 를 보호합니다.
+ *   대기실 규칙에 "POST /api/reserve" 처럼 적힌 요청에 입장권이 없으면 429 {"spillway":"queued"} 를 돌려줍니다.
+ *   입장권은 사이트 화면의 sdk.js 가 대기 창에서 받아 x-spillway-token 헤더와 쿠키(__spw_{tenant}_{room})로 붙입니다.
+ *
  * CSS·JS·이미지·폰트 같은 정적 파일은 규칙과 상관없이 엔진에 묻지 않고 바로 통과합니다.
  * 안전 원칙: 판단할 수 없으면 통과시킵니다(fail-open). 대기열 때문에 사이트가 막히면 안 됩니다.
  */
@@ -53,6 +57,8 @@ export type GuardOptions = {
 };
 
 export const TOKEN_PARAM = "__spw";
+/** 버튼 방식 API 요청에 입장권을 싣는 헤더 (sdk.js 의 Spillway.fetch 가 붙임) */
+export const ACTION_HEADER = "x-spillway-token";
 const DEFAULT_BOTS = /googlebot|bingbot|yeti|daum|duckduckbot|baiduspider|slurp|kakaotalk-scrap|facebookexternalhit|twitterbot|slackbot|linkedinbot/i;
 const CACHE_TTL_MS = 10_000;
 const FETCH_TIMEOUT_MS = 1_500;
@@ -89,16 +95,24 @@ export async function guardPage(request: Request, env: SpillwayEnv, opts: GuardO
 }
 
 async function guard(request: Request, env: SpillwayEnv, opts: GuardOptions): Promise<Response | null> {
-  if (request.method !== "GET" && request.method !== "HEAD") return null;
-
   const url = new URL(request.url);
-  if (opts.skipStatic !== false && isStaticAsset(request, url)) return null;
+  const secret = env.SPILLWAY_TOKEN_SECRET;
+  if (!secret) return null; // 설정 누락 → 통과
+
+  // 정적 파일(GET)은 규칙과 상관없이 엔진에 묻지 않고 통과
+  const readOnly = request.method === "GET" || request.method === "HEAD";
+  if (readOnly && opts.skipStatic !== false && isStaticAsset(request, url)) return null;
+
+  // 버튼·이벤트 방식: API 요청 (메서드 무관, 엔진 규칙을 쓸 때만)
+  if (!opts.room && !opts.protect && request.method !== "OPTIONS") {
+    const act = await resolveAction(env, opts, request.method, url.pathname);
+    if (act) return act.enabled ? await checkAction(request, secret, opts.tenant, act.room) : null;
+  }
+
+  if (!readOnly) return null;
 
   const bots = opts.bypassUserAgents === undefined ? DEFAULT_BOTS : opts.bypassUserAgents;
   if (bots && bots.test(request.headers.get("user-agent") ?? "")) return null;
-
-  const secret = env.SPILLWAY_TOKEN_SECRET;
-  if (!secret) return null; // 설정 누락 → 통과
 
   // 1) 이 경로에 걸린 대기실 찾기 (엔진 규칙 또는 코드 규칙). 없거나 판단 불가면 통과
   const hit = await resolveRoom(env, opts, url.pathname);
@@ -166,18 +180,58 @@ async function resolveRoom(env: SpillwayEnv, opts: GuardOptions, pathname: strin
   }
 
   // 엔진 규칙
-  const rules = await cached(`rules|${opts.engineUrl}|${opts.tenant}`, opts, async () => {
-    const body = await engineJson<{ rooms?: EngineRule[] }>(env, opts, `/q/${encSeg(opts.tenant)}/rules`);
-    return body && Array.isArray(body.rooms) ? body.rooms : null;
-  });
+  const rules = await engineRules(env, opts);
   if (!rules) return null;
   for (const r of rules) {
-    if (r.mode !== "page") continue; // flow / action 은 아직 지원하지 않음
+    if (r.mode !== "page") continue; // action 은 resolveAction, flow 는 아직 지원하지 않음
     if (r.match.some((p) => globMatch(p, pathname)) && !r.exclude.some((p) => globMatch(p, pathname))) {
       return { room: r.room, enabled: r.enabled };
     }
   }
   return null;
+}
+
+/** 엔진의 대기실 규칙 (캐시) */
+function engineRules(env: SpillwayEnv, opts: GuardOptions): Promise<EngineRule[] | null> {
+  return cached(`rules|${opts.engineUrl}|${opts.tenant}`, opts, async () => {
+    const body = await engineJson<{ rooms?: EngineRule[] }>(env, opts, `/q/${encSeg(opts.tenant)}/rules`);
+    return body && Array.isArray(body.rooms) ? body.rooms : null;
+  });
+}
+
+/** 버튼 방식 대기실 중 이 요청(메서드 + 경로)에 걸리는 것 */
+async function resolveAction(env: SpillwayEnv, opts: GuardOptions, method: string, pathname: string): Promise<Hit | null> {
+  const rules = await engineRules(env, opts);
+  if (!rules) return null;
+  for (const r of rules) {
+    if (r.mode !== "action") continue;
+    if (r.match.some((p) => actionMatch(p, method, pathname)) && !r.exclude.some((p) => actionMatch(p, method, pathname))) {
+      return { room: r.room, enabled: r.enabled };
+    }
+  }
+  return null;
+}
+
+/** 입장권(헤더 또는 쿠키)이 있으면 통과, 없으면 429 — sdk.js 가 이 응답을 보고 대기 창을 띄웁니다 */
+async function checkAction(request: Request, secret: string, tenant: string, room: string): Promise<Response | null> {
+  const fromHeader = request.headers.get(ACTION_HEADER);
+  if (fromHeader && (await verifyAccess(fromHeader, secret, tenant, room))) return null;
+  const fromCookie = readCookie(request.headers.get("cookie"), cookieName(tenant, room));
+  if (fromCookie && (await verifyAccess(fromCookie, secret, tenant, room))) return null;
+  return new Response(JSON.stringify({ spillway: "queued", mode: "action", tenant, room }), {
+    status: 429,
+    headers: { "content-type": "application/json", "cache-control": "no-store", "retry-after": "5" },
+  });
+}
+
+/**
+ * 버튼 방식 규칙 매칭: "POST /api/reserve" (메서드 + 경로) 또는 "/api/reserve" (모든 메서드).
+ * 경로 부분은 globMatch 와 같은 규칙입니다.
+ */
+export function actionMatch(pattern: string, method: string, pathname: string): boolean {
+  const m = /^(GET|POST|PUT|PATCH|DELETE) (\/.*)$/.exec(pattern);
+  if (m) return m[1] === method.toUpperCase() && globMatch(m[2], pathname);
+  return pattern.startsWith("/") && globMatch(pattern, pathname);
 }
 
 const encSeg = encodeURIComponent;

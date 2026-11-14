@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   _resetCache,
+  ACTION_HEADER,
+  actionMatch,
   cookieName,
   globMatch,
   guardPage,
@@ -203,5 +205,61 @@ describe("token", () => {
     expect((await verifyAccess(tok, SECRET, "acme", "sale"))?.n).toBe(7);
     expect(await verifyAccess(tok, SECRET, "acme", "other")).toBeNull();
     expect(await verifyAccess(tok, SECRET, "other", "sale")).toBeNull();
+  });
+});
+
+describe("버튼·이벤트 방식 (action)", () => {
+  const ACTION_RULES = {
+    tenant: "acme",
+    rooms: [
+      { room: "main", mode: "page", enabled: true, match: ["/"], exclude: [] },
+      { room: "send", mode: "action", enabled: true, match: ["POST /api/letters", "/api/vote/*"], exclude: ["/api/vote/result"] },
+      { room: "paused", mode: "action", enabled: false, match: ["POST /api/paused"], exclude: [] },
+    ],
+  };
+  const env = () => makeEnv({ "/q/acme/rules": { body: ACTION_RULES } });
+  const post = (path: string, headers: Record<string, string> = {}) => new Request("https://site.com" + path, { method: "POST", headers });
+  const sendToken = () => access({ r: "send" });
+
+  it("규칙 매칭: 메서드 + 경로, 메서드 없는 경로는 모든 메서드", () => {
+    expect(actionMatch("POST /api/letters", "post", "/api/letters")).toBe(true);
+    expect(actionMatch("POST /api/letters", "GET", "/api/letters")).toBe(false);
+    expect(actionMatch("/api/vote/*", "PUT", "/api/vote/3")).toBe(true);
+    expect(actionMatch("/api/vote/*", "PUT", "/api/other")).toBe(false);
+  });
+
+  it("입장권 없이 막힌 API 를 부르면 429 queued", async () => {
+    const res = await guardPage(post("/api/letters"), env(), opts);
+    expect(res!.status).toBe(429);
+    expect(await res!.json()).toMatchObject({ spillway: "queued", mode: "action", room: "send" });
+  });
+
+  it("헤더나 쿠키에 입장권이 있으면 통과", async () => {
+    const t = await sendToken();
+    expect(await guardPage(post("/api/letters", { [ACTION_HEADER]: t }), env(), opts)).toBeNull();
+    expect(await guardPage(post("/api/letters", { cookie: `${cookieName("acme", "send")}=${t}` }), env(), opts)).toBeNull();
+  });
+
+  it("다른 대기실의 입장권이나 만료된 입장권은 거부", async () => {
+    const other = await access({ r: "main" });
+    expect((await guardPage(post("/api/letters", { [ACTION_HEADER]: other }), env(), opts))!.status).toBe(429);
+    const old = await access({ r: "send", exp: Math.floor(Date.now() / 1000) - 5 });
+    expect((await guardPage(post("/api/letters", { [ACTION_HEADER]: old }), env(), opts))!.status).toBe(429);
+  });
+
+  it("규칙에 없는 메서드·경로, 제외 경로, 꺼진 대기실, OPTIONS 는 통과", async () => {
+    expect(await guardPage(new Request("https://site.com/api/letters"), env(), opts)).toBeNull(); // GET
+    expect(await guardPage(post("/api/vote/result"), env(), opts)).toBeNull();
+    expect(await guardPage(post("/api/paused"), env(), opts)).toBeNull();
+    expect(await guardPage(new Request("https://site.com/api/letters", { method: "OPTIONS" }), env(), opts)).toBeNull();
+  });
+
+  it("엔진 장애 때는 통과 (fail-open)", async () => {
+    expect(await guardPage(post("/api/letters"), makeEnv({ "/q/acme/rules": { throws: true } }), opts)).toBeNull();
+  });
+
+  it("페이지 방식은 그대로 동작", async () => {
+    const res = await guardPage(nav("https://site.com/"), env(), opts);
+    expect(res!.status).toBe(302);
   });
 });

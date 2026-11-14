@@ -141,3 +141,26 @@ git tag -a v0.4.0 -m "v0.4.0"   # package.json 의 version 과 맞추기 (-a: �
 git push --follow-tags          # 커밋과 주석 태그를 함께 푸시 → CI 통과 후 GitHub Release 자동 생성
 ```
 `git tag v0.4.0` 처럼 `-a` 없이 만든 태그는 `--follow-tags` 로 올라가지 않습니다. 그럴 때는 `git push origin v0.4.0` 으로 태그를 직접 푸시하세요.
+
+## 버튼·이벤트 방식 (v0.5.0)
+
+콘솔에서 대기실 방식을 **버튼·이벤트**로 고르고 막을 API 를 적습니다. 예: `POST /api/letters` (메서드 없이 `/api/vote/*` 는 모든 메서드)
+
+**서버** — 코드 변경 없음. `guardPage` 가 그 API 요청에 입장권이 없으면 `429 {"spillway":"queued"}` 를 돌려줍니다.
+입장권은 `x-spillway-token` 헤더 또는 쿠키 `__spw_{tenant}_{room}` 에서 읽습니다.
+
+**화면** — 엔진의 `sdk.js` 를 넣고 버튼에 속성 하나:
+
+```html
+<script src="http://localhost:8787/sdk.js" data-tenant="hello-x-mas" defer></script>
+
+<form action="/api/letters" method="post">
+  <button type="submit" data-spillway-room="send">편지 보내기</button>
+</form>
+```
+
+- 누르면 페이지 위에 대기 창이 뜨고, 차례가 되면 창이 닫히면서 원래 클릭(폼 전송 등)이 이어집니다.
+- 코드로: `await Spillway.fetch("send", "/api/letters", { method: "POST", body })` / `await Spillway.gate("send")`
+- 입장권은 대기실의 "입장 후 유지 시간" 동안 유효합니다 (그동안은 다시 눌러도 바로 통과).
+- 사이트에 CSP 가 있으면 `script-src`, `frame-src` 에 엔진 주소를 넣어 주세요.
+- 엔진이 응답하지 않으면 대기 없이 통과합니다 (fail-open).
