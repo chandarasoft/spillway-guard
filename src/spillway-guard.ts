@@ -18,8 +18,9 @@
  *   대기실 규칙에 "POST /api/reserve" 처럼 적힌 요청에 입장권이 없으면 429 {"spillway":"queued"} 를 돌려줍니다.
  *   입장권은 사이트 화면의 sdk.js 가 대기 창에서 받아 x-spillway-token 헤더와 쿠키(__spw_{tenant}_{room})로 붙입니다.
  *
- * 입장 인원 제한 대기실(policy "capacity")은 쿠키 없는 방문자가 오면 가드가 먼저 엔진 /enter 로 바로 입장을 시도합니다.
- *   자리가 있으면 대기 화면 없이 입장권을 쿠키로 심고 통과, 없을 때만 대기 화면으로 보냅니다.
+ * 쿠키 없는 방문자가 오면 가드가 먼저 엔진 /enter 로 바로 입장을 시도합니다.
+ *   입장 인원 제한은 자리가 있으면, 입장 속도 제한은 기다리는 사람이 없고 속도 여유가 있으면
+ *   대기 화면 없이 입장권을 쿠키로 심고 통과, 아니면 대기 화면으로 보냅니다.
  *   응답에 쿠키를 붙이려면 withSpillway() 로 사이트 처리를 감싸 주세요 (guardPage() 는 같은 주소로 한 번 302).
  *
  *   export default {
@@ -273,8 +274,11 @@ type Hit = { room: string; enabled: boolean; policy?: string; phase?: string };
 /** phase: pre(예약 시작 전) / open / closed(종료). 구버전 엔진은 없음 = open */
 type EngineRule = { room: string; mode: string; policy?: string; phase?: string; enabled: boolean; match: string[]; exclude: string[] };
 
-/** 바로 입장(/enter)을 시도할 대기실인지: 입장 인원 제한 + 진행 중 (시작 전·종료면 대기 화면이 안내) */
-const canEnter = (hit: Hit, opts: GuardOptions) => hit.policy === "capacity" && (hit.phase ?? "open") === "open" && opts.serverEnter !== false;
+/**
+ * 바로 입장(/enter)을 시도할 대기실인지: 진행 중이면 입장 방식과 상관없이 (시작 전·종료면 대기 화면이 안내).
+ * 입장 인원 제한은 자리가 있으면, 입장 속도 제한은 기다리는 사람이 없고 속도 여유가 있으면 바로 입장 (엔진 0.11 부터)
+ */
+const canEnter = (hit: Hit, opts: GuardOptions) => (hit.phase ?? "open") === "open" && opts.serverEnter !== false;
 
 async function resolveRoom(env: SpillwayEnv, opts: GuardOptions, pathname: string): Promise<Hit | null> {
   // 코드 규칙 (v0.2 방식)

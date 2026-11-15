@@ -72,7 +72,8 @@ describe("엔진 규칙 (기본)", () => {
 
     expect(waitPath(await guardPage(nav("https://site.com/l/123"), env, opts))).toBe(`${ENGINE}/q/acme/main/wait`);
     expect(waitPath(await guardPage(nav("https://site.com/sale/shoes"), env, opts))).toBe(`${ENGINE}/q/acme/sale/wait`);
-    expect(env.calls).toEqual(["/q/acme/rules"]); // 규칙은 한 번만 받아 옴 (캐시)
+    expect(env.calls.filter((c) => c.endsWith("/rules"))).toEqual(["/q/acme/rules"]); // 규칙은 한 번만 받아 옴 (캐시)
+    expect(env.calls.filter((c) => c.endsWith("/enter"))).toEqual(["/q/acme/main/enter", "/q/acme/main/enter", "/q/acme/sale/enter"]); // 먼저 바로 입장 시도 (여기선 404 → 대기 화면)
   });
 
   it("규칙에 없는 경로, exclude, 꺼진 대기실, 미지원 mode 는 통과", async () => {
@@ -162,7 +163,7 @@ describe("코드 규칙 (room + protect, v0.2 방식)", () => {
     expect(await guardPage(nav("https://site.com/"), e, codeOpts)).toBeNull();
     expect(await guardPage(nav("https://site.com/reserve/admin/x"), e, codeOpts)).toBeNull();
     expect(waitPath(await guardPage(nav("https://site.com/reserve/1"), e, codeOpts))).toBe(`${ENGINE}/q/acme/sale/wait`);
-    expect(e.calls).toEqual(["/q/acme/sale/check"]);
+    expect(e.calls).toEqual(["/q/acme/sale/check", "/q/acme/sale/enter"]);
   });
 
   it("room 만 있고 protect 가 없으면 통과", async () => {
@@ -355,9 +356,19 @@ describe("입장 인원 제한 (capacity) — 가드가 먼저 바로 입장", (
     }
   });
 
-  it("rate 대기실, serverEnter:false, 유효한 쿠키가 있으면 /enter 를 부르지 않는다", async () => {
+  it("입장 속도 제한(rate) 대기실도 먼저 /enter: 한가하면 바로 입장, 아니면(pass:false rate) 대기 화면 (v0.6.1)", async () => {
+    let free = true;
+    const { env, seen } = capEnv(async (room) => (free ? { body: { pass: true, token: await access({ r: room }), n: 1 } } : { body: { pass: false, reason: "rate" } }));
+    const res = await withSpillway(nav("https://site.com/sale/1"), env, opts, page);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("set-cookie")!.startsWith(`${cookieName("acme", "rate")}=`)).toBe(true);
+    free = false;
+    expect(waitPath(await withSpillway(nav("https://site.com/sale/2"), env, opts, page))).toBe(`${ENGINE}/q/acme/rate/wait`);
+    expect(seen.filter((c) => c.path === "/q/acme/rate/enter").length).toBe(2);
+  });
+
+  it("serverEnter:false, 유효한 쿠키가 있으면 /enter 를 부르지 않는다", async () => {
     const { env, seen } = capEnv(grant("cap"));
-    expect(waitPath(await guardPage(nav("https://site.com/sale/1"), env, opts))).toBe(`${ENGINE}/q/acme/rate/wait`);
     expect(waitPath(await guardPage(nav("https://site.com/event/1"), env, { ...opts, serverEnter: false }))).toBe(`${ENGINE}/q/acme/cap/wait`);
     const withCookie = nav("https://site.com/event/1", { cookie: `${CAP_COOKIE}=${await access({ r: "cap" })}` });
     expect(await guardPage(withCookie, env, opts)).toBeNull();
