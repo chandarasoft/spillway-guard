@@ -185,7 +185,7 @@ git push --follow-tags          # 커밋과 주석 태그를 함께 푸시 → C
 **화면** — 엔진의 `sdk.js` 를 넣고 버튼에 속성 하나:
 
 ```html
-<script src="http://localhost:8787/sdk.js" data-tenant="hello-x-mas" defer></script>
+<script src="http://localhost:8787/sdk/v0.6.0.js" data-tenant="hello-x-mas" defer></script>
 
 <form action="/api/letters" method="post">
   <button type="submit" data-spillway-room="send">편지 보내기</button>
