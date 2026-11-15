@@ -9,6 +9,7 @@ import {
   isStaticAsset,
   signToken,
   verifyAccess,
+  withSpillway,
   type GuardOptions,
   type SpillwayEnv,
 } from "../src/spillway-guard";
@@ -261,5 +262,135 @@ describe("버튼·이벤트 방식 (action)", () => {
   it("페이지 방식은 그대로 동작", async () => {
     const res = await guardPage(nav("https://site.com/"), env(), opts);
     expect(res!.status).toBe(302);
+  });
+});
+
+describe("입장 인원 제한 (capacity) — 가드가 먼저 바로 입장", () => {
+  const CAP_RULES = {
+    tenant: "acme",
+    rooms: [
+      { room: "cap", mode: "page", policy: "capacity", enabled: true, match: ["/event*"], exclude: [] },
+      { room: "rate", mode: "page", policy: "rate", enabled: true, match: ["/sale*"], exclude: [] },
+      { room: "capi", mode: "action", policy: "capacity", enabled: true, match: ["POST /api/order"], exclude: [] },
+    ],
+  };
+  const CAP_COOKIE = cookieName("acme", "cap");
+
+  /** /enter 응답을 정할 수 있는 엔진 흉내 (요청 헤더도 기록) */
+  function capEnv(enter: Reply | ((room: string) => Promise<Reply>)) {
+    const seen: { path: string; method: string; auth: string | null }[] = [];
+    const env: SpillwayEnv = {
+      SPILLWAY_TOKEN_SECRET: SECRET,
+      SPILLWAY_ENGINE: {
+        fetch: vi.fn(async (url: string, init?: RequestInit) => {
+          const path = new URL(url).pathname;
+          seen.push({ path, method: init?.method ?? "GET", auth: new Headers(init?.headers).get("x-spillway-auth") });
+          if (path === "/q/acme/rules") return new Response(JSON.stringify(CAP_RULES));
+          const m = path.match(/^\/q\/acme\/([^/]+)\/enter$/);
+          if (m) {
+            const r = typeof enter === "function" ? await enter(m[1]) : enter;
+            if (r.throws) throw new Error("engine down");
+            return new Response(JSON.stringify(r.body ?? {}), { status: r.status ?? 200 });
+          }
+          return new Response("{}", { status: 404 });
+        }),
+      } as unknown as Fetcher,
+    };
+    return { env, seen };
+  }
+  const grant = (room: string) => async (): Promise<Reply> => ({ body: { pass: true, token: await access({ r: room }), n: 7 } });
+  const page = () => new Response("<h1>page</h1>", { headers: { "content-type": "text/html" } });
+
+  it("자리가 있으면 withSpillway 는 대기 화면 없이 페이지에 입장 쿠키를 붙인다", async () => {
+    const { env, seen } = capEnv(grant("cap"));
+    const handler = vi.fn(page);
+    const res = await withSpillway(nav("https://site.com/event/1"), env, opts, handler);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("<h1>page</h1>");
+    expect(handler).toHaveBeenCalledOnce();
+    const cookie = res.headers.get("set-cookie")!;
+    expect(cookie.startsWith(`${CAP_COOKIE}=`)).toBe(true);
+    expect(cookie).toContain("HttpOnly");
+    expect(res.headers.get("cache-control")).toBe("private, no-store"); // 입장권 든 응답은 공유 캐시 금지
+    // /enter 는 POST + 고객사 키로 서명한 x-spillway-auth
+    const call = seen.find((c) => c.path === "/q/acme/cap/enter")!;
+    expect(call.method).toBe("POST");
+    const p = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(call.auth!.split(".")[0].replace(/-/g, "+").replace(/_/g, "/")), (ch) => ch.charCodeAt(0))));
+    expect(p).toMatchObject({ t: "en", tn: "acme", r: "cap" });
+  });
+
+  it("guardPage 는 쿠키를 심고 같은 주소로 한 번 302 (대기 화면으로 가지 않음)", async () => {
+    const { env } = capEnv(grant("cap"));
+    const res = await guardPage(nav("https://site.com/event/1?x=1"), env, opts);
+    expect(res?.status).toBe(302);
+    expect(res!.headers.get("location")).toBe("/event/1?x=1");
+    expect(res!.headers.get("set-cookie")!.startsWith(`${CAP_COOKIE}=`)).toBe(true);
+  });
+
+  it("자리가 없거나(pass:false) 엔진이 /enter 를 모르면(404) 대기 화면으로", async () => {
+    for (const reply of [{ body: { pass: false, reason: "full" } }, { status: 404 }, { status: 401 }] as Reply[]) {
+      _resetCache();
+      const { env } = capEnv(reply);
+      const handler = vi.fn(page);
+      const res = await withSpillway(nav("https://site.com/event/1"), env, opts, handler);
+      expect(res.status).toBe(302);
+      expect(waitPath(res)).toBe(`${ENGINE}/q/acme/cap/wait`);
+      expect(handler).not.toHaveBeenCalled();
+    }
+  });
+
+  it("엔진이 준 입장권이 이 사이트 키로 검증되지 않으면 쿠키를 심지 않고 대기 화면으로", async () => {
+    const { env } = capEnv(async () => ({ body: { pass: true, token: await signToken({ t: "ac", tn: "acme", r: "cap", n: 1, exp: 9e9, kid: 1 }, "other-key") } }));
+    const res = await withSpillway(nav("https://site.com/event/1"), env, opts, page);
+    expect(waitPath(res)).toBe(`${ENGINE}/q/acme/cap/wait`);
+  });
+
+  it("엔진 장애(예외·5xx)면 통과 (fail-open, 쿠키 없음)", async () => {
+    for (const reply of [{ throws: true }, { status: 503 }] as Reply[]) {
+      _resetCache();
+      const { env } = capEnv(reply);
+      const res = await withSpillway(nav("https://site.com/event/1"), env, opts, page);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("set-cookie")).toBeNull();
+    }
+  });
+
+  it("rate 대기실, serverEnter:false, 유효한 쿠키가 있으면 /enter 를 부르지 않는다", async () => {
+    const { env, seen } = capEnv(grant("cap"));
+    expect(waitPath(await guardPage(nav("https://site.com/sale/1"), env, opts))).toBe(`${ENGINE}/q/acme/rate/wait`);
+    expect(waitPath(await guardPage(nav("https://site.com/event/1"), env, { ...opts, serverEnter: false }))).toBe(`${ENGINE}/q/acme/cap/wait`);
+    const withCookie = nav("https://site.com/event/1", { cookie: `${CAP_COOKIE}=${await access({ r: "cap" })}` });
+    expect(await guardPage(withCookie, env, opts)).toBeNull();
+    expect(seen.some((c) => c.path.endsWith("/enter"))).toBe(false);
+  });
+
+  it("예약 시작 전·종료(phase pre/closed)면 /enter 를 부르지 않고 대기 화면이 안내", async () => {
+    for (const phase of ["pre", "closed"]) {
+      _resetCache();
+      const rules = { tenant: "acme", rooms: [{ room: "cap", mode: "page", policy: "capacity", phase, enabled: true, match: ["/event*"], exclude: [] }] };
+      const seen: string[] = [];
+      const env: SpillwayEnv = {
+        SPILLWAY_TOKEN_SECRET: SECRET,
+        SPILLWAY_ENGINE: { fetch: vi.fn(async (url: string) => { const p = new URL(url).pathname; seen.push(p); return new Response(JSON.stringify(p.endsWith("/rules") ? rules : { pass: true })); }) } as unknown as Fetcher,
+      };
+      const res = await withSpillway(nav("https://site.com/event/1"), env, opts, page);
+      expect(waitPath(res)).toBe(`${ENGINE}/q/acme/cap/wait`);
+      expect(seen).toEqual(["/q/acme/rules"]);
+    }
+  });
+
+  it("버튼 방식 API: withSpillway 는 자리가 있으면 API 를 통과시키고 쿠키를 붙이고, guardPage 는 지금처럼 429", async () => {
+    const post = () => new Request("https://site.com/api/order", { method: "POST", body: "{}" });
+    const { env } = capEnv(grant("capi"));
+    const handler = vi.fn(() => new Response('{"ok":true}'));
+    const res = await withSpillway(post(), env, opts, handler);
+    expect(res.status).toBe(200);
+    expect(handler).toHaveBeenCalledOnce();
+    expect(res.headers.get("set-cookie")!.startsWith(`${cookieName("acme", "capi")}=`)).toBe(true);
+    expect((await guardPage(post(), env, opts))?.status).toBe(429);
+
+    _resetCache();
+    const full = capEnv({ body: { pass: false, reason: "full" } });
+    expect((await withSpillway(post(), full.env, opts, handler)).status).toBe(429);
   });
 });

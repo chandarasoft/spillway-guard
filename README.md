@@ -21,7 +21,7 @@ GET 요청 ─┬─ 정적 파일(CSS·JS·이미지·폰트…) / 검색엔진
 
 **1. 설치** (태그로 버전 고정)
 ```bash
-npm i github:chandarasoft/spillway-guard#v0.4.0
+npm i github:chandarasoft/spillway-guard#v0.6.0
 ```
 
 **2. 고객사 서명 키 받기**: Spillway 운영자가 엔진에서 조회해 전달합니다.
@@ -39,7 +39,18 @@ curl -H "x-admin-key: <ADMIN_KEY>" https://spillway-engine.<계정>.workers.dev/
 npx wrangler secret put SPILLWAY_TOKEN_SECRET   # 2번에서 받은 key
 ```
 
-**4. fetch 맨 앞에서 호출** (`examples/site-worker.ts` 참고)
+**4. 사이트 처리를 감싸기** (`examples/site-worker.ts` 참고) — 권장 (v0.6.0)
+```ts
+import { withSpillway } from "spillway-guard";
+
+export default {
+  fetch: (request, env) =>
+    withSpillway(request, env, { tenant: "chandarasoft", engineUrl: env.SPILLWAY_ENGINE_URL }, (req) => handleNormally(req, env)),
+};
+```
+입장 인원 제한 대기실에서 자리가 있으면 대기 화면 없이 `handleNormally` 의 응답에 입장 쿠키를 붙여 보냅니다.
+
+기존처럼 **fetch 맨 앞에서 호출**해도 됩니다 (자리가 있으면 쿠키를 심고 같은 주소로 한 번 302):
 ```ts
 import { guardPage } from "spillway-guard";
 
@@ -98,6 +109,7 @@ app.use("*", async (c, next) => (await guardPage(c.req.raw, c.env, { tenant: "ch
 | `bypassUserAgents` | 주요 검색엔진·미리보기 봇 | `null` 이면 봇도 줄 세움 |
 | `skipStatic` | `true` | 정적 파일 자동 통과 |
 | `cacheTtlMs` | `10000` | 엔진 규칙·상태 캐시 시간 |
+| `serverEnter` | `true` | 입장 인원 제한(capacity) 대기실에서 가드가 먼저 엔진 `/enter` 로 바로 입장을 시도. `false` 면 항상 대기 화면을 거침 |
 | `siteOrigin` | — | 방문자가 보는 사이트 주소 (예: `https://www.example.com`). CloudFront 등 프록시 뒤에 있어 Worker 가 받는 주소가 `*.workers.dev` 일 때 지정 → 대기 후 돌아갈 주소를 이 origin 으로 만듦 |
 
 ## CDN·프록시 뒤에서 쓸 때 (CloudFront 등)
@@ -107,7 +119,28 @@ app.use("*", async (c, next) => (await guardPage(c.req.raw, c.env, { tenant: "ch
 - 엔진 고객사 설정의 **허용 사이트**에 그 주소를 넣어야 합니다.
 - 프록시가 **쿼리 문자열(`__spw`)과 쿠키(`__spw_*`)를 Worker 로 전달**해야 하고, 대기열이 걸린 페이지(HTML)를 **캐시하지 않아야** 합니다. 캐시된 HTML 이 나가면 가드를 거치지 않습니다.
 
+## 입장 인원 제한 바로 입장 (v0.6.0)
+
+엔진 대기실의 입장 방식이 **입장 인원 제한**(`policy: "capacity"`)이면, 쿠키 없는 방문자가 왔을 때 가드가 먼저 엔진에 묻습니다.
+
+```
+방문자 → 가드 ──POST /q/{tenant}/{room}/enter (x-spillway-auth: 고객사 키 서명)──▶ 엔진
+  ├ 자리 있음  → 입장권 받아 이 사이트 키로 검증 → 쿠키 심고 통과 (대기 화면 없음)
+  ├ 자리 없음  → 지금처럼 대기 화면으로 302 (fetch 요청은 429)
+  ├ 404·401    → 대기 화면으로 (구버전 엔진, 키 불일치)
+  └ 시간 초과·5xx → 통과 (fail-open)
+```
+- 입장 방식이 `rate`(입장 속도 제한)인 대기실과 구버전 엔진(규칙에 `policy` 없음)은 `/enter` 를 부르지 않습니다 → 동작이 v0.5.0 과 같습니다.
+- 버튼·이벤트 방식도 `withSpillway` 로 감싸면, 입장권 없는 API 요청에 먼저 바로 입장을 시도해 자리가 있으면 그대로 통과시킵니다. `guardPage` 는 지금처럼 429 (sdk.js 가 대기 창을 띄움).
+- 바로 입장도 엔진에서 순번을 받고 사용량(`direct`)으로 집계됩니다.
+- 예약 시작 대기실이 **시작 전·종료**(`phase` pre/closed)일 때는 `/enter` 를 부르지 않고 대기 화면으로 보냅니다 (시작 전 카운트다운·종료 안내는 대기 화면이 보여 줌).
+
 ## 버전별 변경점
+
+**v0.6.0**
+- 입장 인원 제한 대기실: 가드가 먼저 `/enter` 로 바로 입장 시도 (`serverEnter`, 기본 true)
+- `withSpillway(request, env, opts, handler)` 추가 — 사이트 응답에 입장 쿠키를 붙여 리다이렉트 없이 입장
+- 엔진 v0.8.0 이상 필요 (이전 엔진에서는 v0.5.0 처럼 동작)
 
 **v0.4.0**
 - `siteOrigin` 옵션 추가 (CDN·프록시 뒤 사이트)
@@ -137,10 +170,10 @@ GitHub 설치는 저장소의 `dist/` 를 그대로 쓰므로, **소스를 고�
 
 릴리스:
 ```bash
-git tag -a v0.4.0 -m "v0.4.0"   # package.json 의 version 과 맞추기 (-a: 주석 태그)
+git tag -a v0.6.0 -m "v0.6.0"   # package.json 의 version 과 맞추기 (-a: 주석 태그)
 git push --follow-tags          # 커밋과 주석 태그를 함께 푸시 → CI 통과 후 GitHub Release 자동 생성
 ```
-`git tag v0.4.0` 처럼 `-a` 없이 만든 태그는 `--follow-tags` 로 올라가지 않습니다. 그럴 때는 `git push origin v0.4.0` 으로 태그를 직접 푸시하세요.
+`git tag v0.6.0` 처럼 `-a` 없이 만든 태그는 `--follow-tags` 로 올라가지 않습니다. 그럴 때는 `git push origin v0.6.0` 으로 태그를 직접 푸시하세요.
 
 ## 버튼·이벤트 방식 (v0.5.0)
 

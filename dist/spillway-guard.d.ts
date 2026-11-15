@@ -18,6 +18,14 @@
  *   대기실 규칙에 "POST /api/reserve" 처럼 적힌 요청에 입장권이 없으면 429 {"spillway":"queued"} 를 돌려줍니다.
  *   입장권은 사이트 화면의 sdk.js 가 대기 창에서 받아 x-spillway-token 헤더와 쿠키(__spw_{tenant}_{room})로 붙입니다.
  *
+ * 입장 인원 제한 대기실(policy "capacity")은 쿠키 없는 방문자가 오면 가드가 먼저 엔진 /enter 로 바로 입장을 시도합니다.
+ *   자리가 있으면 대기 화면 없이 입장권을 쿠키로 심고 통과, 없을 때만 대기 화면으로 보냅니다.
+ *   응답에 쿠키를 붙이려면 withSpillway() 로 사이트 처리를 감싸 주세요 (guardPage() 는 같은 주소로 한 번 302).
+ *
+ *   export default {
+ *     fetch: (req, env) => withSpillway(req, env, { tenant: "acme", engineUrl: env.SPILLWAY_ENGINE_URL }, (r) => handleNormally(r, env)),
+ *   };
+ *
  * CSS·JS·이미지·폰트 같은 정적 파일은 규칙과 상관없이 엔진에 묻지 않고 바로 통과합니다.
  * 안전 원칙: 판단할 수 없으면 통과시킵니다(fail-open). 대기열 때문에 사이트가 막히면 안 됩니다.
  */
@@ -51,6 +59,11 @@ export type GuardOptions = {
      * 대기 후 돌아갈 주소(return)를 이 origin 으로 만듭니다. 없으면 요청 주소를 그대로 씁니다.
      */
     siteOrigin?: string;
+    /**
+     * 입장 인원 제한(capacity) 대기실에서 가드가 먼저 바로 입장을 시도할지 (기본 true).
+     * false 면 지금까지처럼 항상 대기 화면을 거칩니다.
+     */
+    serverEnter?: boolean;
 };
 export declare const TOKEN_PARAM = "__spw";
 /** 버튼 방식 API 요청에 입장권을 싣는 헤더 (sdk.js 의 Spillway.fetch 가 붙임) */
@@ -58,7 +71,18 @@ export declare const ACTION_HEADER = "x-spillway-token";
 /** 방문자가 보는 주소: siteOrigin 이 있으면 그 origin + 요청 경로 */
 export declare function publicUrl(url: URL, siteOrigin?: string): string;
 export declare const cookieName: (tenant: string, room: string) => string;
+/**
+ * 사이트 Worker 의 fetch 맨 앞에서 호출합니다. null 이면 통과.
+ * 입장 인원 제한 대기실에서 바로 입장하면, 쿠키를 심고 같은 주소로 한 번 302 합니다 (대기 화면은 거치지 않음).
+ * 리다이렉트 없이 바로 응답하려면 withSpillway() 를 쓰세요.
+ */
 export declare function guardPage(request: Request, env: SpillwayEnv, opts: GuardOptions): Promise<Response | null>;
+/**
+ * 사이트 처리(handler)를 감싸는 가드. 대기열이 필요하면 대기 화면·429 를 돌려주고, 아니면 handler 를 부릅니다.
+ * 입장 인원 제한 대기실에서 바로 입장하면 handler 응답에 입장 쿠키를 붙입니다 → 방문자는 리다이렉트 없이 바로 페이지를 봅니다.
+ * 버튼·이벤트 방식 API 도 입장권이 없을 때 먼저 바로 입장을 시도하고, 자리가 없을 때만 429 를 돌려줍니다.
+ */
+export declare function withSpillway(request: Request, env: SpillwayEnv, opts: GuardOptions, handler: (request: Request) => Response | Promise<Response>): Promise<Response>;
 /**
  * 버튼 방식 규칙 매칭: "POST /api/reserve" (메서드 + 경로) 또는 "/api/reserve" (모든 메서드).
  * 경로 부분은 globMatch 와 같은 규칙입니다.
