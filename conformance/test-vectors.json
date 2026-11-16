@@ -1,0 +1,236 @@
+{
+  "description": "Spillway 연동 프로토콜 v1 공통 테스트 벡터 — 모든 언어의 가드가 같은 결과를 내야 합니다. 기준: spillway-guard v0.6.1",
+  "secret": "spillway-test-vector-secret",
+  "tenant": "acme",
+  "room": "sale",
+  "verifyAccess": [
+    {
+      "name": "유효한 입장권",
+      "token": "eyJ0IjoiYWMiLCJ0biI6ImFjbWUiLCJyIjoic2FsZSIsIm4iOjcsImV4cCI6NDEwMjQ0NDgwMCwia2lkIjoxfQ.IN9a2sr6xaHJiamqbLgaCtDUqO_bP3x5YrcCuP1w7Mg",
+      "valid": true
+    },
+    {
+      "name": "다른 대기실",
+      "token": "eyJ0IjoiYWMiLCJ0biI6ImFjbWUiLCJyIjoib3RoZXIiLCJuIjo3LCJleHAiOjQxMDI0NDQ4MDAsImtpZCI6MX0.kyPUkuajqjJD6P9rvM3uN4Eb7XDhol1YO0xMyGHifN8",
+      "valid": false
+    },
+    {
+      "name": "다른 고객사",
+      "token": "eyJ0IjoiYWMiLCJ0biI6Im90aGVyIiwiciI6InNhbGUiLCJuIjo3LCJleHAiOjQxMDI0NDQ4MDAsImtpZCI6MX0.Jl-0oyCaU6SWcYeFVy5zg_1fGN0eSSlr20bCAPH-Tz8",
+      "valid": false
+    },
+    {
+      "name": "입장권이 아닌 종류 (t=tk 순번표)",
+      "token": "eyJ0IjoidGsiLCJ0biI6ImFjbWUiLCJyIjoic2FsZSIsIm4iOjcsImV4cCI6NDEwMjQ0NDgwMCwia2lkIjoxfQ.lcglhWbMQ-U5HhBSkG1dF-d09-DPVKj3iBwsPRmJUrI",
+      "valid": false
+    },
+    {
+      "name": "만료됨",
+      "token": "eyJ0IjoiYWMiLCJ0biI6ImFjbWUiLCJyIjoic2FsZSIsIm4iOjcsImV4cCI6MTAwMDAwMDAwMCwia2lkIjoxfQ.rSk_FkO9vuiA-sdGMaEwWgeFDdKC-aOQMwKk047ZT_A",
+      "valid": false
+    },
+    {
+      "name": "exp 가 문자열",
+      "token": "eyJ0IjoiYWMiLCJ0biI6ImFjbWUiLCJyIjoic2FsZSIsIm4iOjcsImV4cCI6IjQxMDI0NDQ4MDAiLCJraWQiOjF9.vhgtZcLMSQgZ6KN0Q7Cbz_PPdyNt_HXMMDcyBEW_2vs",
+      "valid": false
+    },
+    {
+      "name": "exp 없음",
+      "token": "eyJ0IjoiYWMiLCJ0biI6ImFjbWUiLCJyIjoic2FsZSIsIm4iOjF9.kXjaLiQHTl7u-hcl_sUTZ6PPlfWj3RnDOsFBjNs85_o",
+      "valid": false
+    },
+    {
+      "name": "다른 키로 서명",
+      "token": "eyJ0IjoiYWMiLCJ0biI6ImFjbWUiLCJyIjoic2FsZSIsIm4iOjcsImV4cCI6NDEwMjQ0NDgwMCwia2lkIjoxfQ.gA651ADu_e_LkSXduxhAFe8rJnx9EARvziJ4Pezt4pU",
+      "valid": false
+    },
+    {
+      "name": "본문 변조 (서명 그대로)",
+      "token": "eyJ0IjoiYWMiLCJ0biI6ImFjbWUiLCJyIjoic2FsZSIsIm4iOjgsImV4cCI6NDEwMjQ0NDgwMCwia2lkIjoxfQ.IN9a2sr6xaHJiamqbLgaCtDUqO_bP3x5YrcCuP1w7Mg",
+      "valid": false
+    },
+    {
+      "name": "서명 변조",
+      "token": "eyJ0IjoiYWMiLCJ0biI6ImFjbWUiLCJyIjoic2FsZSIsIm4iOjcsImV4cCI6NDEwMjQ0NDgwMCwia2lkIjoxfQ.AN9a2sr6xaHJiamqbLgaCtDUqO_bP3x5YrcCuP1w7Mg",
+      "valid": false
+    },
+    {
+      "name": "점이 두 개",
+      "token": "eyJ0IjoiYWMiLCJ0biI6ImFjbWUiLCJyIjoic2FsZSIsIm4iOjcsImV4cCI6NDEwMjQ0NDgwMCwia2lkIjoxfQ.IN9a2sr6xaHJiamqbLgaCtDUqO_bP3x5YrcCuP1w7Mg.x",
+      "valid": false
+    },
+    {
+      "name": "점이 없음",
+      "token": "eyJ0IjoiYWMiLCJ0biI6ImFjbWUiLCJyIjoic2FsZSIsIm4iOjcsImV4cCI6NDEwMjQ0NDgwMCwia2lkIjoxfQIN9a2sr6xaHJiamqbLgaCtDUqO_bP3x5YrcCuP1w7Mg",
+      "valid": false
+    },
+    {
+      "name": "빈 문자열",
+      "token": "",
+      "valid": false
+    },
+    {
+      "name": "2048자 초과",
+      "token": "eyJ0IjoiYWMiLCJ0biI6ImFjbWUiLCJyIjoic2FsZSIsIm4iOjcsImV4cCI6NDEwMjQ0NDgwMCwia2lkIjoxfQ.IN9a2sr6xaHJiamqbLgaCtDUqO_bP3x5YrcCuP1w7MgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "valid": false
+    },
+    {
+      "name": "본문이 JSON 이 아님 (서명은 맞음)",
+      "token": "bm90IGpzb24._k4J0cqfKvJbxrGfUsVRpWUz2wPrHy31y0s6eEGcguw",
+      "valid": false
+    }
+  ],
+  "sign": [
+    {
+      "payloadJson": "{\"t\":\"en\",\"tn\":\"acme\",\"r\":\"sale\",\"iat\":1800000000,\"exp\":1800000060}",
+      "token": "eyJ0IjoiZW4iLCJ0biI6ImFjbWUiLCJyIjoic2FsZSIsImlhdCI6MTgwMDAwMDAwMCwiZXhwIjoxODAwMDAwMDYwfQ.ovseUpx5t6ubrA6oMC5elvbuWgihh3vgs2nBAcPxw08"
+    },
+    {
+      "payloadJson": "{\"t\":\"ac\",\"tn\":\"acme\",\"r\":\"sale\",\"n\":1,\"exp\":4102444800,\"kid\":1}",
+      "token": "eyJ0IjoiYWMiLCJ0biI6ImFjbWUiLCJyIjoic2FsZSIsIm4iOjEsImV4cCI6NDEwMjQ0NDgwMCwia2lkIjoxfQ.Gkkcx3TRyR318jMI6S56IjQ9Eho14DZvTuVJ-P07WV8"
+    }
+  ],
+  "globMatch": [
+    {
+      "pattern": "/",
+      "path": "/",
+      "match": true
+    },
+    {
+      "pattern": "/",
+      "path": "/a",
+      "match": false
+    },
+    {
+      "pattern": "/event*",
+      "path": "/event",
+      "match": true
+    },
+    {
+      "pattern": "/event*",
+      "path": "/events",
+      "match": true
+    },
+    {
+      "pattern": "/event*",
+      "path": "/event/1",
+      "match": true
+    },
+    {
+      "pattern": "/event*",
+      "path": "/eve",
+      "match": false
+    },
+    {
+      "pattern": "/l/*",
+      "path": "/l/1",
+      "match": true
+    },
+    {
+      "pattern": "/l/*",
+      "path": "/l/1/x",
+      "match": true
+    },
+    {
+      "pattern": "/l/*",
+      "path": "/l",
+      "match": false
+    },
+    {
+      "pattern": "/a.b",
+      "path": "/a.b",
+      "match": true
+    },
+    {
+      "pattern": "/a.b",
+      "path": "/axb",
+      "match": false
+    },
+    {
+      "pattern": "/p(1)",
+      "path": "/p(1)",
+      "match": true
+    },
+    {
+      "pattern": "/x+y",
+      "path": "/x+y",
+      "match": true
+    },
+    {
+      "pattern": "/x+y",
+      "path": "/xxy",
+      "match": false
+    },
+    {
+      "pattern": "*",
+      "path": "/anything/at/all",
+      "match": true
+    },
+    {
+      "pattern": "/a*b",
+      "path": "/a/x/b",
+      "match": true
+    },
+    {
+      "pattern": "/a*b",
+      "path": "/a/x/c",
+      "match": false
+    }
+  ],
+  "actionMatch": [
+    {
+      "pattern": "POST /api/orders",
+      "method": "POST",
+      "path": "/api/orders",
+      "match": true
+    },
+    {
+      "pattern": "POST /api/orders",
+      "method": "GET",
+      "path": "/api/orders",
+      "match": false
+    },
+    {
+      "pattern": "POST /api/orders",
+      "method": "POST",
+      "path": "/api/orders/1",
+      "match": false
+    },
+    {
+      "pattern": "POST /api/orders*",
+      "method": "POST",
+      "path": "/api/orders/1",
+      "match": true
+    },
+    {
+      "pattern": "/api/vote/*",
+      "method": "PUT",
+      "path": "/api/vote/3",
+      "match": true
+    },
+    {
+      "pattern": "/api/vote/*",
+      "method": "DELETE",
+      "path": "/api/vote/3",
+      "match": true
+    },
+    {
+      "pattern": "api/vote",
+      "method": "POST",
+      "path": "api/vote",
+      "match": false
+    },
+    {
+      "pattern": "PATCH /x",
+      "method": "PATCH",
+      "path": "/x",
+      "match": true
+    },
+    {
+      "pattern": "OPTIONS /x",
+      "method": "OPTIONS",
+      "path": "/x",
+      "match": false
+    }
+  ]
+}

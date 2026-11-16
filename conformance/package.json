@@ -1,0 +1,15 @@
+{
+  "name": "spillway-guard-conformance",
+  "private": true,
+  "type": "module",
+  "description": "가드 적합성 시험 (모든 언어 공통) — README.md 참고",
+  "scripts": {
+    "vectors": "node make-vectors.mjs > test-vectors.json",
+    "test": "node conformance.mjs",
+    "test:down": "node conformance.mjs --down"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "spillway-guard": "file:.."
+  }
+}

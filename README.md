@@ -2,6 +2,8 @@
 
 사이트 Worker 에 붙이는 **페이지 진입형** 대기열 가드입니다. 의존성이 없고, GitHub 에서 바로 설치합니다.
 
+> **Cloudflare Workers 가 아닌 사이트**(Spring Boot·전자정부·PHP·Express·Next.js)는 [`ports/`](ports/) 의 서버 가드를 씁니다. 모든 구현은 [`conformance/`](conformance/) 의 공통 테스트 벡터·적합성 시험을 통과합니다.
+
 ## 동작
 
 ```
