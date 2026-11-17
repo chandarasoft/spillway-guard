@@ -33,12 +33,12 @@
 export const TOKEN_PARAM = "__spw";
 /** 버튼 방식 API 요청에 입장권을 싣는 헤더 (sdk.js 의 Spillway.fetch 가 붙임) */
 export const ACTION_HEADER = "x-spillway-token";
-const DEFAULT_BOTS = /googlebot|bingbot|yeti|daum|duckduckbot|baiduspider|slurp|kakaotalk-scrap|facebookexternalhit|twitterbot|slackbot|linkedinbot/i;
+/** 통과시킬 Cloudflare 검증 봇 종류 (검색 노출·링크 미리보기) */
+const VERIFIED_BOT_CATEGORIES = new Set(["Search Engine Crawler", "Search Engine Optimization", "Page Preview"]);
 const CACHE_TTL_MS = 10_000;
 const FETCH_TIMEOUT_MS = 1_500;
 /** /enter 서명 유효 시간 (엔진은 ±60초까지 받음) */
 const ENTER_AUTH_TTL_SEC = 60;
-const STATIC_DESTS = new Set(["style", "script", "image", "font", "audio", "video", "track", "manifest", "worker", "sharedworker", "serviceworker", "object", "embed"]);
 const STATIC_EXT = new Set([
     "css", "js", "mjs", "cjs", "map", "wasm",
     "png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "ico", "bmp",
@@ -127,7 +127,9 @@ async function decide(request, env, opts, canWrap) {
     }
     if (!readOnly)
         return PASS;
-    const bots = opts.bypassUserAgents === undefined ? DEFAULT_BOTS : opts.bypassUserAgents;
+    if (opts.bypassVerifiedBots !== false && isVerifiedBot(request))
+        return PASS;
+    const bots = opts.bypassUserAgents ?? null;
     if (bots && bots.test(request.headers.get("user-agent") ?? ""))
         return PASS;
     // 1) 이 경로에 걸린 대기실 찾기 (엔진 규칙 또는 코드 규칙). 없거나 판단 불가면 통과
@@ -360,13 +362,18 @@ export function globMatch(pattern, pathname) {
     }
     return re.test(pathname);
 }
-/** 정적 파일 요청인지 (브라우저가 보낸 요청 종류 또는 확장자로 판단) */
-export function isStaticAsset(req, url) {
-    const dest = req.headers.get("sec-fetch-dest");
-    if (dest && STATIC_DESTS.has(dest))
-        return true;
+/**
+ * 정적 파일 요청인지 — 경로의 확장자로만 판단합니다.
+ * (v0.6.1 까지는 Sec-Fetch-Dest 헤더도 봤지만, 매크로가 "Sec-Fetch-Dest: image" 를 붙여 보호된 페이지를 통과할 수 있어 뺐습니다)
+ */
+export function isStaticAsset(_req, url) {
     const m = /\.([a-z0-9]+)$/i.exec(url.pathname);
     return !!m && STATIC_EXT.has(m[1].toLowerCase());
+}
+/** Cloudflare 가 검증한 검색엔진·미리보기 봇인지 (Workers 의 request.cf 에만 있음, 위장 불가) */
+export function isVerifiedBot(req) {
+    const cat = req.cf?.verifiedBotCategory;
+    return typeof cat === "string" && VERIFIED_BOT_CATEGORIES.has(cat);
 }
 function matchesRule(pathname, rules) {
     return rules.some((r) => typeof r === "string" ? pathname === r || pathname.startsWith(r.endsWith("/") ? r : `${r}/`) : r.test(pathname));

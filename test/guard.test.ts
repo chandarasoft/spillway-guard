@@ -90,12 +90,13 @@ describe("엔진 규칙 (기본)", () => {
       new Request("https://site.com/js/app.js"),
       new Request("https://site.com/og.png"),
       new Request("https://site.com/fonts/a.woff2"),
-      new Request("https://site.com/img?id=3", { headers: { "sec-fetch-dest": "image" } }),
     ];
     for (const req of assets) expect(await guardPage(req, env, opts)).toBeNull();
     expect(env.calls).toHaveLength(0);
     // 페이지는 걸림
     expect((await guardPage(nav("https://site.com/anything"), env, opts))?.status).toBe(302);
+    // Sec-Fetch-Dest 는 위장할 수 있어 정적 파일로 보지 않음 (v0.6.2)
+    expect((await guardPage(nav("https://site.com/img?id=3", { "sec-fetch-dest": "image" }), env, opts))?.status).toBe(302);
   });
 
   it("skipStatic:false 면 정적 파일도 규칙대로", async () => {
@@ -143,14 +144,30 @@ describe("엔진 규칙 (기본)", () => {
     }
   });
 
-  it("fail-open: 엔진 오류·응답 없음·고객사 없음·봇·POST", async () => {
+  it("fail-open: 엔진 오류·응답 없음·고객사 없음·POST", async () => {
     for (const reply of [{ status: 500 }, { throws: true }, { status: 404 }] as Reply[]) {
       _resetCache();
       expect(await guardPage(nav("https://site.com/"), makeEnv({ "/q/acme/rules": reply }), opts)).toBeNull();
     }
     _resetCache();
-    expect(await guardPage(nav("https://site.com/", { "user-agent": "Mozilla/5.0 (compatible; Googlebot/2.1)" }), makeEnv(), opts)).toBeNull();
     expect(await guardPage(new Request("https://site.com/", { method: "POST" }), makeEnv(), opts)).toBeNull();
+  });
+
+  it("봇: User-Agent 만으로는 통과하지 않고, Cloudflare 검증 봇만 통과 (v0.6.2)", async () => {
+    const ua = { "user-agent": "Mozilla/5.0 (compatible; Googlebot/2.1)" };
+    _resetCache();
+    expect((await guardPage(nav("https://site.com/", ua), makeEnv(), opts))?.status).toBe(302);
+    // Cloudflare 가 붙인 검증 봇 종류 (위장 불가)
+    const verified = (cat: string) => Object.assign(nav("https://site.com/", ua), { cf: { verifiedBotCategory: cat } });
+    _resetCache();
+    expect(await guardPage(verified("Search Engine Crawler"), makeEnv(), opts)).toBeNull();
+    _resetCache();
+    expect((await guardPage(verified("AI Crawler"), makeEnv(), opts))?.status).toBe(302);
+    _resetCache();
+    expect((await guardPage(verified("Search Engine Crawler"), makeEnv(), { ...opts, bypassVerifiedBots: false }))?.status).toBe(302);
+    // 위험을 알고 직접 켠 경우만 User-Agent 로 통과
+    _resetCache();
+    expect(await guardPage(nav("https://site.com/", ua), makeEnv(), { ...opts, bypassUserAgents: /googlebot/i })).toBeNull();
   });
 });
 
@@ -189,7 +206,7 @@ describe("helpers", () => {
     expect(isStaticAsset(new Request("https://site.com/A.PNG"), u("/A.PNG"))).toBe(true);
     expect(isStaticAsset(new Request("https://site.com/index.html"), u("/index.html"))).toBe(false);
     expect(isStaticAsset(new Request("https://site.com/"), u("/"))).toBe(false);
-    expect(isStaticAsset(new Request("https://site.com/x", { headers: { "sec-fetch-dest": "font" } }), u("/x"))).toBe(true);
+    expect(isStaticAsset(new Request("https://site.com/x", { headers: { "sec-fetch-dest": "font" } }), u("/x"))).toBe(false); // 헤더는 보지 않음 (v0.6.2)
     expect(isStaticAsset(new Request("https://site.com/x", { headers: { "sec-fetch-dest": "document" } }), u("/x"))).toBe(false);
   });
 });

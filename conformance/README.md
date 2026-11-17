@@ -6,7 +6,7 @@
 |---|---|
 | `test-vectors.json` | 공통 테스트 벡터 (입장권 검증 15 · 서명 2 · 경로 패턴 17 · API 규칙 9). `npm run vectors` 로 공식 가드에서 다시 생성 |
 | `vectors/VectorTest.java`, `vectors/vector-test.php` | 언어별 벡터 실행기 |
-| `conformance.mjs` | 엔진 + 시험 사이트(127.0.0.1:8788)를 HTTP 로 두드리는 26개 시나리오. `--down` 은 엔진을 끈 뒤 fail-open 확인 |
+| `conformance.mjs` | 엔진 + 시험 사이트(127.0.0.1:8788)를 HTTP 로 두드리는 27개 시나리오. `--down` 은 엔진을 끈 뒤 fail-open 확인 |
 | `sites/` | 언어별 시험 사이트 (통과하면 `SITE OK`, `/api/*` 는 `API OK`) |
 | `run.sh` | 시험용 고객사 만들기 → 서명 키 받기 → 시험 사이트 실행 → 시나리오 실행 |
 

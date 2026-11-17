@@ -6,8 +6,8 @@ Cloudflare Workers 가 아닌 사이트에 Spillway 대기열을 붙이는 코�
 |---|---|---|
 | [`java/`](java/) | Spring Boot 2·3, 전자정부 표준프레임워크, JSP/Servlet | `SpillwayGuard.java` + 필터 하나(`jakarta/` 또는 `javax/`)를 프로젝트에 복사. Java 8+, 외부 라이브러리 없음 |
 | [`php/`](php/) | 그누보드·영카트, 워드프레스, Laravel, 일반 PHP | `spillway.php` 를 올리고 페이지 출력 전에 `spillway_guard([...])`. PHP 7.0+ |
-| [`node/`](node/) | Express, NestJS | `npm i github:chandarasoft/spillway-guard#v0.6.1` + `spillway-express.mjs` |
-| [`next/`](next/) | Next.js 16+ (`proxy.ts`), 15 이하는 `middleware.ts` 로 | `npm i github:chandarasoft/spillway-guard#v0.6.1` + `proxy.ts` |
+| [`node/`](node/) | Express, NestJS | `npm i github:chandarasoft/spillway-guard#v0.6.2` + `spillway-express.mjs` |
+| [`next/`](next/) | Next.js 16+ (`proxy.ts`), 15 이하는 `middleware.ts` 로 | `npm i github:chandarasoft/spillway-guard#v0.6.2` + `proxy.ts` |
 
 설치 방법은 연동 가이드 3장(환경별 탭)과 관리 콘솔 [사이트 연동]에 있습니다.
 

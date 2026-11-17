@@ -7,7 +7,7 @@
 ## 동작
 
 ```
-GET 요청 ─┬─ 정적 파일(CSS·JS·이미지·폰트…) / 검색엔진 봇 / POST       → 통과 (엔진 호출 없음)
+GET 요청 ─┬─ 정적 파일(확장자) / Cloudflare 검증 검색 봇 / POST       → 통과 (엔진 호출 없음)
           ├─ 엔진 규칙(/q/{tenant}/rules)에 맞는 대기실 없음             → 통과
           ├─ ?__spw=<토큰> (대기 후 복귀)                              → 쿠키 저장 후 깨끗한 URL 로 302
           ├─ 유효한 쿠키 __spw_<tenant>_<room>                         → 통과
@@ -23,7 +23,7 @@ GET 요청 ─┬─ 정적 파일(CSS·JS·이미지·폰트…) / 검색엔진
 
 **1. 설치** (태그로 버전 고정)
 ```bash
-npm i github:chandarasoft/spillway-guard#v0.6.1
+npm i github:chandarasoft/spillway-guard#v0.6.2
 ```
 
 **2. 고객사 서명 키 받기**: Spillway 운영자가 엔진에서 조회해 전달합니다.
@@ -97,8 +97,8 @@ app.use("*", async (c, next) => (await guardPage(c.req.raw, c.env, { tenant: "ch
 ## 정적 파일 자동 통과
 
 규칙과 상관없이 아래 요청은 엔진에 묻지 않고 바로 통과합니다 (`skipStatic: false` 로 끌 수 있음).
-- 브라우저가 보낸 요청 종류(`Sec-Fetch-Dest`)가 `style`, `script`, `image`, `font`, `audio`, `video`, `manifest` 등
 - 확장자가 `css`, `js`, `mjs`, `map`, `wasm`, `png`, `jpg`, `jpeg`, `gif`, `webp`, `avif`, `svg`, `ico`, `woff`, `woff2`, `ttf`, `otf`, `mp4`, `webm`, `mp3`, `pdf`, `txt`, `xml` 등
+- 요청 헤더(`Sec-Fetch-Dest`)는 보지 않습니다 (v0.6.2 — 매크로가 위장할 수 있음). 확장자 없는 이미지 주소(`/img?id=3`)가 대기열 적용 경로 아래에 있으면, 입장 쿠키가 없는 요청은 대기 화면으로 갑니다.
 
 ## 옵션
 
@@ -108,7 +108,8 @@ app.use("*", async (c, next) => (await guardPage(c.req.raw, c.env, { tenant: "ch
 | `engineUrl` | (필수) | 엔진 공개 URL |
 | `room` + `protect` | — | 엔진 규칙 대신 **코드로 규칙을 정할 때** (v0.2 방식). `protect` 의 문자열은 접두사, 정규식도 가능 |
 | `exclude` | `[]` | 코드 규칙의 제외 경로 |
-| `bypassUserAgents` | 주요 검색엔진·미리보기 봇 | `null` 이면 봇도 줄 세움 |
+| `bypassVerifiedBots` | `true` | Cloudflare 가 검증한 검색엔진·링크 미리보기 봇(`request.cf.verifiedBotCategory`)은 통과. 위장 불가 |
+| `bypassUserAgents` | 없음 (v0.6.2) | 통과시킬 User-Agent 정규식. User-Agent 는 위장할 수 있어 매크로가 대기열을 건너뛸 수 있음 — 위험을 알고 쓸 때만 |
 | `skipStatic` | `true` | 정적 파일 자동 통과 |
 | `cacheTtlMs` | `10000` | 엔진 규칙·상태 캐시 시간 |
 | `serverEnter` | `true` | 가드가 먼저 엔진 `/enter` 로 바로 입장을 시도 (입장 방식 상관없이, v0.6.1). `false` 면 항상 대기 화면을 거침 |
@@ -138,6 +139,12 @@ app.use("*", async (c, next) => (await guardPage(c.req.raw, c.env, { tenant: "ch
 - 예약 시작 대기실이 **시작 전·종료**(`phase` pre/closed)일 때는 `/enter` 를 부르지 않고 대기 화면으로 보냅니다 (시작 전 카운트다운·종료 안내는 대기 화면이 보여 줌).
 
 ## 버전별 변경점
+
+**v0.6.2** (보안 — 대기열 우회 차단)
+- 검색엔진 봇 User-Agent 를 기본으로 통과시키지 않음 (`bypassUserAgents` 기본값 없음). User-Agent 는 위장할 수 있어 매크로가 "Googlebot" 으로 건너뛸 수 있었음
+- Cloudflare 가 검증한 검색엔진·링크 미리보기 봇(`request.cf.verifiedBotCategory`)만 통과 (`bypassVerifiedBots`, 기본 true — 위장 불가)
+- 정적 파일 판정에서 `Sec-Fetch-Dest` 헤더를 빼고 확장자로만 판단 ("Sec-Fetch-Dest: image" 를 붙여 보호된 페이지를 통과하던 문제)
+- 서버 가드(Java·PHP)도 같은 변경 (봇 User-Agent 기본 통과 끔, Sec-Fetch-Dest 판정 제거). 서버 가드 버전을 1.0.0 → **0.6.2** 로 바꿔 npm 가드와 번호를 맞춤 (앞으로 모든 가드가 같은 번호)
 
 **v0.6.1**
 - 입장 속도 제한 대기실도 먼저 `/enter` 로 바로 입장 시도 → 한가할 때는 대기 화면을 거치지 않음 (엔진 v0.11.0 이상)

@@ -3,7 +3,7 @@
  * Spillway 가드 — PHP 참조 구현 (연동 프로토콜 v1)
  *
  * 요구 사항: PHP 7.0 이상, 확장 json · hash (기본 포함). curl 이 있으면 쓰고, 없으면 file_get_contents 로 엔진을 부릅니다.
- * 동작은 Cloudflare 가드(spillway-guard v0.6.1)의 withSpillway 와 같습니다.
+ * 동작은 Cloudflare 가드(spillway-guard v0.6.2)의 withSpillway 와 같습니다.
  *  - 대기실 규칙은 엔진 GET /q/{tenant}/rules 에서 받아 10초 캐시 (APCu 가 있으면 APCu, 없으면 임시 폴더 파일)
  *  - 입장권(__spw_{tenant}_{room} 쿠키 · x-spillway-token 헤더 · ?__spw=)을 고객사 서명 키로 검증
  *  - 자리가 있으면 엔진 POST /enter 로 대기 화면 없이 바로 입장 (응답에 쿠키)
@@ -17,7 +17,7 @@
  */
 
 if (!defined('SPILLWAY_VERSION')) {
-    define('SPILLWAY_VERSION', '1.0.0');
+    define('SPILLWAY_VERSION', '0.6.2'); // spillway-guard(npm) 와 같은 번호
 }
 
 /**
@@ -85,7 +85,8 @@ function spillway_options(array $opts)
         'timeout' => 1.5,
         'server_enter' => true,
         'skip_static' => true,
-        'bypass_user_agents' => '/googlebot|bingbot|yeti|daum|duckduckbot|baiduspider|slurp|kakaotalk-scrap|facebookexternalhit|twitterbot|slackbot|linkedinbot/i',
+        // 통과시킬 User-Agent 정규식 (기본: 없음). User-Agent 는 위장할 수 있어 v0.6.2 부터 끔 — 위험을 알고 쓸 때만
+        'bypass_user_agents' => null,
     ), $opts);
     if (PHP_SAPI === 'cli' || empty($o['secret']) || empty($o['tenant']) || empty($o['engine_url'])) {
         return null; // 설정 누락·명령줄 실행 → 통과
@@ -465,12 +466,9 @@ function spillway_action_match($pattern, $method, $path)
 
 function spillway_is_static(array $h, $path)
 {
-    static $dests = array('style', 'script', 'image', 'font', 'audio', 'video', 'track', 'manifest', 'worker', 'sharedworker', 'serviceworker', 'object', 'embed');
     static $exts = array('css', 'js', 'mjs', 'cjs', 'map', 'wasm', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg', 'ico', 'bmp',
         'woff', 'woff2', 'ttf', 'otf', 'eot', 'mp4', 'webm', 'mp3', 'ogg', 'wav', 'm4a', 'pdf', 'txt', 'xml', 'webmanifest');
-    if (isset($h['sec-fetch-dest']) && in_array($h['sec-fetch-dest'], $dests, true)) {
-        return true;
-    }
+    // 확장자로만 판단 (Sec-Fetch-Dest 는 위장할 수 있어 보지 않음, v0.6.2)
     return preg_match('/\.([a-z0-9]+)$/i', $path, $m) === 1 && in_array(strtolower($m[1]), $exts, true);
 }
 

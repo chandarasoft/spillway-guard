@@ -76,7 +76,7 @@ const action = actions.map(([pattern, method, path, match]) => {
 });
 
 console.log(JSON.stringify({
-  description: "Spillway 연동 프로토콜 v1 공통 테스트 벡터 — 모든 언어의 가드가 같은 결과를 내야 합니다. 기준: spillway-guard v0.6.1",
+  description: "Spillway 연동 프로토콜 v1 공통 테스트 벡터 — 모든 언어의 가드가 같은 결과를 내야 합니다. 기준: spillway-guard v0.6.2",
   secret, tenant, room,
   verifyAccess: verify,
   sign,

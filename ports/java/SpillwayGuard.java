@@ -31,7 +31,7 @@ import java.util.regex.Pattern;
  * 서블릿 API 에 의존하지 않는 판단 로직입니다. SpillwayFilter(javax / jakarta)가 이 클래스를 씁니다.
  * 요구 사항: Java 8 이상. 외부 라이브러리 없음 (JSON 도 이 파일 안의 작은 파서로 읽습니다)
  *
- * 동작은 Cloudflare 가드(spillway-guard v0.6.1)의 withSpillway 와 같습니다.
+ * 동작은 Cloudflare 가드(spillway-guard v0.6.2)의 withSpillway 와 같습니다.
  *  - 대기실 규칙은 엔진 GET /q/{tenant}/rules 에서 받아 10초 캐시
  *  - 입장권(__spw_{tenant}_{room} 쿠키 · x-spillway-token 헤더 · ?__spw=)을 고객사 서명 키로 검증
  *  - 자리가 있으면 엔진 POST /enter 로 대기 화면 없이 바로 입장 (응답에 쿠키)
@@ -39,7 +39,7 @@ import java.util.regex.Pattern;
  */
 public final class SpillwayGuard {
 
-    public static final String VERSION = "1.0.0";
+    public static final String VERSION = "0.6.2"; // spillway-guard(npm) 와 같은 번호
     public static final String TOKEN_PARAM = "__spw";
     public static final String ACTION_HEADER = "x-spillway-token";
 
@@ -47,15 +47,13 @@ public final class SpillwayGuard {
     private static final int ENTER_AUTH_TTL_SEC = 60;
     private static final Pattern ACTION_RULE = Pattern.compile("^(GET|POST|PUT|PATCH|DELETE) (/.*)$");
     private static final Pattern EXT = Pattern.compile("\\.([a-zA-Z0-9]+)$");
-    private static final Set<String> STATIC_DESTS = new HashSet<String>(Arrays.asList(
-            "style", "script", "image", "font", "audio", "video", "track", "manifest",
-            "worker", "sharedworker", "serviceworker", "object", "embed"));
     private static final Set<String> STATIC_EXT = new HashSet<String>(Arrays.asList(
             "css", "js", "mjs", "cjs", "map", "wasm",
             "png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "ico", "bmp",
             "woff", "woff2", "ttf", "otf", "eot",
             "mp4", "webm", "mp3", "ogg", "wav", "m4a",
             "pdf", "txt", "xml", "webmanifest"));
+    /** 예전 기본값(검색엔진 봇 User-Agent). User-Agent 는 위장할 수 있어 v0.6.2 부터 기본으로 쓰지 않음 — 위험을 알고 직접 넣을 때만 */
     public static final Pattern DEFAULT_BOTS = Pattern.compile(
             "googlebot|bingbot|yeti|daum|duckduckbot|baiduspider|slurp|kakaotalk-scrap|facebookexternalhit|twitterbot|slackbot|linkedinbot",
             Pattern.CASE_INSENSITIVE);
@@ -77,8 +75,8 @@ public final class SpillwayGuard {
         public int timeoutMs = 1_500;
         /** 자리가 있으면 대기 화면 없이 바로 입장 (기본 true) */
         public boolean serverEnter = true;
-        /** 통과시킬 User-Agent (기본: 주요 검색엔진 봇). null 이면 봇도 줄 세움 */
-        public Pattern bypassUserAgents = DEFAULT_BOTS;
+        /** 통과시킬 User-Agent (기본: 없음). 매크로가 "Googlebot" 으로 위장하면 대기열을 건너뛰므로 위험을 알고 쓸 때만 */
+        public Pattern bypassUserAgents = null;
         /** 정적 파일 자동 통과 (기본 true) */
         public boolean skipStatic = true;
     }
@@ -414,9 +412,8 @@ public final class SpillwayGuard {
         return pattern.startsWith("/") && globMatch(pattern, path);
     }
 
+    /** 정적 파일: 확장자로만 판단 (Sec-Fetch-Dest 는 위장할 수 있어 보지 않음, v0.6.2) */
     private static boolean isStatic(Req r, String path) {
-        String dest = r.header("sec-fetch-dest");
-        if (dest != null && STATIC_DESTS.contains(dest)) return true;
         Matcher m = EXT.matcher(path);
         return m.find() && STATIC_EXT.contains(m.group(1).toLowerCase(Locale.ROOT));
     }

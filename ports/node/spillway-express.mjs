@@ -2,7 +2,7 @@
  * Spillway — Express(Node.js 20+) 연결 코드
  * 공식 가드(spillway-guard)를 그대로 쓰고, Express 요청을 웹 표준 Request 로 바꿔 넘깁니다.
  *
- *   npm i github:chandarasoft/spillway-guard#v0.6.1
+ *   npm i github:chandarasoft/spillway-guard#v0.6.2
  *   app.use(spillway({ tenant: "acme-shop", engineUrl: process.env.SPILLWAY_ENGINE_URL }));
  *
  * 서명 키는 환경 변수 SPILLWAY_TOKEN_SECRET 에서 읽습니다.

@@ -48,8 +48,16 @@ export type GuardOptions = {
     protect?: PathRule[];
     /** (선택, room 과 함께) 제외할 경로 (protect 보다 우선) */
     exclude?: PathRule[];
-    /** 통과시킬 User-Agent (기본: 주요 검색엔진/미리보기 봇). null 이면 봇도 줄 세움 */
+    /**
+     * 통과시킬 User-Agent (기본: 없음 — v0.6.2 부터).
+     * User-Agent 는 누구나 바꿔 보낼 수 있어 매크로가 "Googlebot" 으로 위장하면 대기열을 건너뜁니다. 위험을 알고 쓸 때만 넣으세요.
+     */
     bypassUserAgents?: RegExp | null;
+    /**
+     * Cloudflare 가 검증한 검색엔진·링크 미리보기 봇(request.cf.verifiedBotCategory)은 통과 (기본 true).
+     * Cloudflare 가 IP 로 확인해 붙이는 값이라 위장할 수 없습니다. Cloudflare 를 거치지 않는 환경에서는 값이 없어 아무 영향 없음.
+     */
+    bypassVerifiedBots?: boolean;
     /** 정적 파일(CSS·JS·이미지·폰트 등)을 자동으로 통과 (기본 true) */
     skipStatic?: boolean;
     /** 엔진 규칙·상태 캐시 시간 ms (기본 10초) */
@@ -98,8 +106,13 @@ export declare function _resetCache(): void;
  *   "/event*"  → "/event", "/events", "/event/1"
  */
 export declare function globMatch(pattern: string, pathname: string): boolean;
-/** 정적 파일 요청인지 (브라우저가 보낸 요청 종류 또는 확장자로 판단) */
-export declare function isStaticAsset(req: Request, url: URL): boolean;
+/**
+ * 정적 파일 요청인지 — 경로의 확장자로만 판단합니다.
+ * (v0.6.1 까지는 Sec-Fetch-Dest 헤더도 봤지만, 매크로가 "Sec-Fetch-Dest: image" 를 붙여 보호된 페이지를 통과할 수 있어 뺐습니다)
+ */
+export declare function isStaticAsset(_req: Request, url: URL): boolean;
+/** Cloudflare 가 검증한 검색엔진·미리보기 봇인지 (Workers 의 request.cf 에만 있음, 위장 불가) */
+export declare function isVerifiedBot(req: Request): boolean;
 type AccessPayload = {
     t: "ac";
     tn: string;
