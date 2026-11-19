@@ -1,6 +1,6 @@
 # Spillway 서버 가드 — 다른 환경용
 
-Cloudflare Workers 가 아닌 사이트에 Spillway 대기열을 붙이는 코드입니다. 모두 연동 프로토콜 v1 (사내 문서 docs/protocol-v1.md, 고객사용 안내는 [연동 가이드](https://www.spillway.co.kr/guide))을 따르고, Cloudflare 가드(`withSpillway`)와 같은 동작을 합니다.
+Cloudflare Workers 가 아닌 사이트에 Spillway 대기열을 붙이는 코드입니다. 모두 연동 프로토콜 v1 (사내 문서 docs/14-연동-프로토콜-v1.md, 고객사용 안내는 [연동 가이드](https://www.spillway.co.kr/guide))을 따르고, Cloudflare 가드(`withSpillway`)와 같은 동작을 합니다.
 
 | 폴더 | 환경 | 쓰는 법 |
 |---|---|---|
